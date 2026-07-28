@@ -104,11 +104,26 @@ function tokenValido(token) {
   return parseInt(partes[1], 10) > Date.now();
 }
 
+/* Compara pelo resumo: dá sempre o mesmo tamanho, então nem o tempo
+   nem o comprimento da resposta contam quantos caracteres tem a senha. */
+function senhaConfere(tentativa) {
+  var a = crypto.createHash('sha256').update(String(tentativa)).digest();
+  var b = crypto.createHash('sha256').update(SENHA_MESTRE).digest();
+  return crypto.timingSafeEqual(a, b);
+}
+
 function comparacaoSegura(a, b) {
   var ba = Buffer.from(String(a));
   var bb = Buffer.from(String(b));
   if (ba.length !== bb.length) return false;
   return crypto.timingSafeEqual(ba, bb);
+}
+
+/* O cabeçalho pode chegar como "https,http" quando passa por mais de um salto. */
+function protocoloHttps(req) {
+  var proto = req.headers['x-forwarded-proto'];
+  if (!proto) return false;
+  return String(proto).split(',')[0].trim().toLowerCase() === 'https';
 }
 
 function lerCookies(req) {
@@ -126,19 +141,48 @@ function ehMestre(req) {
   return tokenValido(lerCookies(req).artoniana_mestre);
 }
 
-/* Freio simples contra tentativa de força bruta na senha */
+/* Atrás do proxy do Railway todas as conexões vêm do mesmo endereço, então
+   req.socket.remoteAddress é igual para a mesa inteira. Sem olhar o
+   X-Forwarded-For, dez erros de senha de qualquer pessoa trancariam todo
+   mundo por quinze minutos — inclusive o mestre. */
+function ipDoPedido(req) {
+  var encaminhado = req.headers['x-forwarded-for'];
+  if (encaminhado) {
+    var primeiro = String(encaminhado).split(',')[0].trim();
+    if (primeiro) return primeiro;
+  }
+  return req.socket.remoteAddress || 'desconhecido';
+}
+
+/* Freio contra força bruta na senha, em duas camadas:
+   - por IP, apertado: quem erra muito para de tentar
+   - global, folgado: como o X-Forwarded-For pode ser forjado, existe um
+     teto geral que segura uma enxurrada sem trancar a mesa por acidente */
+var JANELA_MS = 15 * 60 * 1000;
+var LIMITE_POR_IP = 10;
+var LIMITE_GLOBAL = 60;
+
 var tentativas = {};
+var geral = { contagem: 0, desde: 0 };
+
 function podeTentar(ip) {
   var agora = Date.now();
+  if (agora - geral.desde > JANELA_MS) geral = { contagem: 0, desde: agora };
+  if (geral.contagem >= LIMITE_GLOBAL) return false;
+
   var registro = tentativas[ip];
-  if (!registro || agora - registro.desde > 15 * 60 * 1000) {
+  if (!registro || agora - registro.desde > JANELA_MS) {
     tentativas[ip] = { contagem: 0, desde: agora };
     return true;
   }
-  return registro.contagem < 10;
+  return registro.contagem < LIMITE_POR_IP;
 }
+
 function registrarFalha(ip) {
   if (tentativas[ip]) tentativas[ip].contagem++;
+  geral.contagem++;
+  // não deixa a tabela crescer sem fim
+  if (Object.keys(tentativas).length > 5000) tentativas = {};
 }
 
 /* ------------------------------------------------------------------
@@ -251,22 +295,20 @@ function tratarApi(req, res, rota, consulta) {
   }
 
   if (rota === '/api/login' && req.method === 'POST') {
-    var ip = req.socket.remoteAddress || 'desconhecido';
+    var ip = ipDoPedido(req);
     if (!podeTentar(ip)) {
       return responderJson(res, 429, { erro: 'Muitas tentativas. Espere alguns minutos.' });
     }
     return lerCorpo(req, function (erro, corpo) {
       if (erro) return responderJson(res, 400, { erro: 'Requisição inválida.' });
       var senha = String((corpo && corpo.senha) || '');
-      var confere = senha.length === SENHA_MESTRE.length &&
-                    comparacaoSegura(senha, SENHA_MESTRE);
-      if (!confere) {
+      if (!senhaConfere(senha)) {
         registrarFalha(ip);
         return responderJson(res, 401, { erro: 'Senha incorreta.' });
       }
       var cookie = 'artoniana_mestre=' + criarToken() +
         '; Path=/; HttpOnly; SameSite=Lax; Max-Age=' + Math.floor(DURACAO_SESSAO_MS / 1000) +
-        (req.headers['x-forwarded-proto'] === 'https' ? '; Secure' : '');
+        (protocoloHttps(req) ? '; Secure' : '');
       responderJson(res, 200, { mestre: true }, { 'Set-Cookie': cookie });
     });
   }

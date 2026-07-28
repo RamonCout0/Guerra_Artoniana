@@ -67,6 +67,17 @@ Abra <http://localhost:3000>. Clique em **Entrar como mestre** e use a senha.
 
 Trocar `SENHA_MESTRE` ou `SEGREDO` derruba as sessões abertas — é só entrar de novo.
 
+### Atrás do proxy do Railway
+
+O app já conta com isso e não precisa de ajuste:
+
+- O cookie de sessão ganha `Secure` quando o `X-Forwarded-Proto` diz que a ligação é https
+- O freio contra chute de senha usa o `X-Forwarded-For` para separar quem é quem. Sem isso,
+  como todas as conexões chegam pelo mesmo endereço do proxy, dez erros de senha de
+  qualquer visitante trancariam a mesa inteira — inclusive você
+- Há também um teto geral de tentativas, já que o `X-Forwarded-For` pode ser forjado
+- No `SIGTERM` do redeploy o estado é gravado antes de sair; ao subir, é lido de volta
+
 ### Backup
 
 O disco pode falhar, então guarde uma cópia de vez em quando. No mapa, logado como mestre,
