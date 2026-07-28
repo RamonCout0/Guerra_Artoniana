@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-tema="claro" data-fase="dia">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Crônicas Artonianas — Arton, 1410</title>
+<link rel="stylesheet" href="css/base.css">
+<link rel="stylesheet" href="css/mapa.css">
+<link rel="stylesheet" href="css/calendario.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>⚔️</text></svg>">
+</head>
+<body>
+
+<header class="barra">
+  <div class="marca">Crônicas Artonianas <small>circa 1410</small></div>
+
+  <div class="caixa-busca" style="width:250px;margin-left:8px">
+    <input type="search" id="mapa-busca" placeholder="Buscar reino, cidade, ruína…" autocomplete="off">
+    <div class="resultados-busca" id="mapa-resultados"></div>
+  </div>
+
+  <div class="espaco"></div>
+
+  <button class="botao" id="abrir-calendario" title="Abrir o calendário artoniano (K)">
+    📜 <span id="resumo-data">5 de Keenvia de 1410</span>
+  </button>
+
+  <span class="emblema" id="emblema-conexao" hidden></span>
+  <span class="emblema" id="emblema-papel">Modo leitura</span>
+  <div class="fase-dia" id="fase-dia" title="Clique para alternar entre automático, dia e noite">
+    <span class="astro" id="fase-astro">☀️</span>
+    <span class="relogio" id="fase-relogio">--:--</span>
+    <span id="fase-rotulo" class="discreto">Dia</span>
+  </div>
+  <button class="botao pequeno" id="botao-sessao">Entrar como mestre</button>
+</header>
+
+<!-- ============ O MAPA (mapa.js monta aqui dentro) ============ -->
+<div class="area-mapa" id="mapa-raiz"></div>
+
+
+<!-- ============ CALENDÁRIO — janela sobreposta ============ -->
+<div class="janela-calendario" id="janela-calendario">
+  <div class="moldura">
+    <div class="calendario-cabecalho">
+      <div class="titulo">Calendário Artoniano <small>o tempo em Arton</small></div>
+      <div class="espaco"></div>
+      <button class="fechar-janela" id="fechar-calendario" title="Fechar (Esc)">✕</button>
+    </div>
+
+    <div class="calendario-corpo">
+      <aside class="coluna">
+        <div class="hoje" id="painel-hoje"></div>
+        <div class="so-mestre controles-tempo" id="controles-tempo" data-visivel="nao"></div>
+        <div class="relogio-real" id="relogio-real"></div>
+        <div class="painel-titulo" style="padding:18px 0 6px">Meses do ano</div>
+        <div class="lista-meses" id="lista-meses"></div>
+      </aside>
+
+      <main class="coluna centro">
+        <div class="cabecalho-mes">
+          <button class="botao icone" id="mes-anterior" title="Mês anterior">←</button>
+          <h2><span id="titulo-mes">—</span><span class="ano" id="titulo-ano"></span></h2>
+          <button class="botao pequeno" id="ir-para-hoje">Ir para a data atual</button>
+          <button class="botao icone" id="mes-seguinte" title="Próximo mês">→</button>
+        </div>
+        <div class="legenda-mes" id="legenda-mes"></div>
+        <div class="grade-semana" id="nomes-dias"></div>
+        <div class="grade-dias" id="grade-dias"></div>
+      </main>
+
+      <aside class="coluna direita">
+        <div class="detalhe-dia" id="detalhe-dia"></div>
+      </aside>
+    </div>
+  </div>
+</div>
+
+
+<!-- ============ Modal: acertar a data ============ -->
+<div class="fundo-modal" id="modal-data" hidden>
+  <div class="modal">
+    <h2>Acertar a data da campanha</h2>
+    <p class="subtitulo">Esta é a data que todos os jogadores enxergam. O relógio da barra do topo continua sendo o do mundo real.</p>
+    <div class="linha-campos">
+      <label class="campo"><span>Dia</span><input type="number" id="data-dia" min="1" max="30" step="1"></label>
+      <label class="campo"><span>Mês</span><select id="data-mes"></select></label>
+      <label class="campo"><span>Ano</span><input type="number" id="data-ano" step="1"></label>
+    </div>
+    <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin:2px 0 12px">
+      <input type="checkbox" id="data-nimb"><span>É um Dia de Nimb</span>
+    </label>
+    <div class="linha-campos">
+      <label class="campo"><span>Hora</span><input type="number" id="data-hora" min="0" max="23" step="1"></label>
+      <label class="campo"><span>Minuto</span><input type="number" id="data-minuto" min="0" max="59" step="5"></label>
+    </div>
+    <div class="erro" id="erro-data"></div>
+    <div class="rodape">
+      <button class="botao fantasma" id="cancelar-data">Cancelar</button>
+      <button class="botao primario" id="confirmar-data">Definir</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ Modal: Dias de Nimb ============ -->
+<div class="fundo-modal" id="modal-nimb" hidden>
+  <div class="modal">
+    <h2>Os Dias de Nimb</h2>
+    <p class="subtitulo">No início de cada ano a Rainha-Imperatriz recebe uma carta com o símbolo do Deus do Caos, dizendo quantos dias de Nimb o ano terá e ao fim de qual mês virão. Aqui você abre essa carta.</p>
+    <div class="linha-campos">
+      <label class="campo"><span>Ano</span><input type="number" id="nimb-ano" step="1"></label>
+      <label class="campo"><span>Quantidade (2 a 8)</span><input type="number" id="nimb-quantidade" min="2" max="8" step="1"></label>
+    </div>
+    <label class="campo"><span>Ocorrem ao fim do mês de</span><select id="nimb-mes"></select></label>
+    <p class="discreto" id="nimb-atual"></p>
+    <div class="rodape">
+      <button class="botao fantasma" id="nimb-sortear">Deixar o Caos decidir</button>
+      <button class="botao primario" id="confirmar-nimb">Definir</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ Modal: ficha do herói ============ -->
+<div class="fundo-modal" id="modal-token" hidden>
+  <div class="modal">
+    <h2>Herói do grupo</h2>
+    <p class="subtitulo">Nome e retrato aparecem para a mesa toda. A foto é reduzida aqui no seu navegador antes de subir — não precisa se preocupar com o tamanho do arquivo.</p>
+
+    <div class="editor-token">
+      <div class="area-recorte">
+        <div class="retrato-previa" id="token-previa"></div>
+        <canvas class="tela-recorte" id="token-recorte" width="360" height="360" hidden></canvas>
+        <div class="mira-recorte" id="token-mira" hidden></div>
+      </div>
+      <div class="editor-token-campos">
+        <label class="campo"><span>Nome do personagem</span>
+          <input type="text" id="token-nome" maxlength="28" placeholder="Ex.: Lady Ayleth"></label>
+        <div class="grupo-botoes">
+          <button class="botao" id="token-escolher-foto">🖼️ Escolher foto</button>
+          <button class="botao fantasma" id="token-tirar-foto">Remover foto</button>
+        </div>
+
+        <div id="controles-recorte" hidden>
+          <label class="campo" style="margin:14px 0 4px">
+            <span>Aproximar</span>
+            <input type="range" id="token-zoom" min="100" max="400" value="100" step="1">
+          </label>
+          <div class="grupo-botoes">
+            <button class="botao pequeno fantasma" id="token-girar">↻ Girar 90°</button>
+            <button class="botao pequeno fantasma" id="token-centralizar">Centralizar</button>
+          </div>
+          <div class="discreto" style="margin-top:8px">
+            Arraste a foto para enquadrar. A roda do mouse também aproxima.
+          </div>
+        </div>
+
+        <div class="discreto" id="dica-recorte" style="margin-top:6px">
+          A imagem é recortada em círculo e guardada com 160 px.
+        </div>
+      </div>
+    </div>
+
+    <label class="campo" style="margin-top:14px"><span>Cor do aro</span>
+      <div class="paleta-token" id="token-paleta"></div>
+    </label>
+
+    <div class="erro" id="erro-token"></div>
+    <div class="rodape">
+      <button class="botao perigo" id="token-tirar-mapa">Tirar do mapa</button>
+      <div class="espaco" style="flex:1"></div>
+      <button class="botao fantasma" id="token-cancelar">Cancelar</button>
+      <button class="botao primario" id="token-salvar">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ Modal de login ============ -->
+<div class="fundo-modal" id="modal-login" hidden>
+  <div class="modal">
+    <h2>Entrar como mestre</h2>
+    <p class="subtitulo">Só o mestre redesenha fronteiras, move o tempo e coloca os heróis no mapa. Os jogadores continuam vendo tudo, em modo leitura.</p>
+    <label class="campo"><span>Senha do mestre</span>
+      <input type="password" id="senha-mestre" autocomplete="current-password"></label>
+    <div class="erro" id="erro-login"></div>
+    <div class="rodape">
+      <button class="botao fantasma" id="cancelar-login">Cancelar</button>
+      <button class="botao primario" id="confirmar-login">Entrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ Modal: ciclo do dia ============ -->
+<div class="fundo-modal" id="modal-config" hidden>
+  <div class="modal">
+    <h2>Ciclo do dia</h2>
+    <p class="subtitulo">O mapa e o calendário escurecem sozinhos conforme o relógio do seu computador. Cada pessoa vê segundo o próprio fuso.</p>
+    <label class="campo"><span>Modo</span>
+      <select id="config-modo">
+        <option value="auto">Automático (segue o relógio)</option>
+        <option value="dia">Sempre claro</option>
+        <option value="noite">Sempre escuro</option>
+      </select></label>
+    <div class="linha-campos">
+      <label class="campo"><span>Nascer do sol</span><input type="number" id="config-nascer" min="0" max="23" step="1"></label>
+      <label class="campo"><span>Pôr do sol</span><input type="number" id="config-ocaso" min="0" max="23" step="1"></label>
+    </div>
+    <div class="rodape">
+      <button class="botao primario" id="fechar-config">Pronto</button>
+    </div>
+  </div>
+</div>
+
+<div class="aviso" id="aviso"></div>
+
+<script src="js/armazenamento.js"></script>
+<script src="js/tema.js"></script>
+<script src="js/sincronia.js"></script>
+<script src="js/geografia-arton.js"></script>
+<script src="js/dados-mapa.js"></script>
+<script src="js/dados-calendario.js"></script>
+<script src="js/calendario-arton.js"></script>
+<script src="js/interface.js"></script>
+<script src="js/mapa.js"></script>
+<script src="js/calendario.js"></script>
+<script>
+(function () {
+  document.getElementById('abrir-calendario')
+          .addEventListener('click', CalendarioJanela.abrir);
+
+  Interface.iniciar().then(function () {
+    MapaArton.iniciar();
+    CalendarioJanela.preparar();
+  });
+})();
+</script>
+</body>
+</html>

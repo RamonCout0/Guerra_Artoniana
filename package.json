@@ -1,0 +1,15 @@
+{
+  "name": "cronicas-artonianas",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Mapa interativo de Arton (circa 1410) e calendário artoniano para campanhas de Tormenta20",
+  "main": "servidor.js",
+  "scripts": {
+    "start": "node servidor.js",
+    "dev": "node servidor.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "UNLICENSED"
+}

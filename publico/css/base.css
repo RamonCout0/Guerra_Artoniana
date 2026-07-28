@@ -1,0 +1,411 @@
+/* =============================================================
+   BASE — paleta, tipografia e componentes compartilhados
+
+   As cores saem do próprio Tormenta20: amostradas das páginas de
+   classe do livro básico. O vermelho #d22833 é o mesmo das quatorze
+   aberturas de classe — é a cor da casa. O preto do livro não é preto:
+   é um bordô muito escuro (#3f0e16), e o projeto inteiro segue nisso.
+
+   O tema acompanha o relógio real de quem está olhando:
+     data-tema = claro | escuro
+     data-fase = amanhecer | dia | anoitecer | noite
+   ============================================================= */
+
+:root {
+  /* ---- paleta institucional Tormenta20 ---- */
+  --t20-rubro: #d22833;        /* vermelho das aberturas de classe */
+  --t20-rubro-claro: #e05339;
+  --t20-rubro-escuro: #8c1118;
+  --t20-vinho: #5e181c;
+  --t20-tinta: #3f0e16;        /* o "preto" do livro, um bordô profundo */
+  --t20-papel: #f4f2f0;
+  --t20-papel-sombra: #e7e4e1;
+  --t20-ouro: #9f7f3e;
+  --t20-sepia: #815a30;
+  --t20-azul: #2e417e;
+  --t20-petroleo: #3b5765;
+  --t20-verde: #0f6233;
+
+  --fonte-titulo: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  --fonte-texto: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --fonte-mono: "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+
+  --raio: 8px;
+  --raio-p: 5px;
+  --transicao: 420ms cubic-bezier(.4, 0, .2, 1);
+  --barra-altura: 58px;
+  --painel-largura: 320px;
+}
+
+/* ---------- DIA: a página do livro ---------- */
+:root[data-tema="claro"] {
+  --fundo: #ded6c8;
+  --fundo-painel: #f4f2f0;
+  --fundo-painel-2: #e7e2da;
+  --fundo-campo: #fbfaf8;
+  --tinta: #3f0e16;
+  --tinta-suave: #6d5a52;
+  --tinta-fraca: #9a8a80;
+  --borda: #cdc3b6;
+  --borda-forte: #a4968a;
+  --realce: #d22833;
+  --realce-suave: #e05339;
+  --ouro: #9f7f3e;
+  --sombra: 0 2px 10px rgba(63, 14, 22, .14);
+  --sombra-forte: 0 12px 40px rgba(63, 14, 22, .28);
+
+  /* ---- cartografia ---- */
+  --mar: #55808f;
+  --mar-fundo: #416a78;
+  --mar-raso: #7ba7b4;
+  --terra: #e2d5b3;
+  --deserto: #eee1ae;
+  --floresta: #7d9463;
+  --montanha: #b5aa95;
+  --rio: #4d7b8c;
+  --costa: #5c4b33;
+  --veu-mapa: rgba(255, 246, 222, 0);
+  --contorno-rotulo: #fbf7ec;
+}
+
+/* ---------- NOITE: a mesma página sob a Tormenta ---------- */
+:root[data-tema="escuro"] {
+  --fundo: #14100f;
+  --fundo-painel: #1e1917;
+  --fundo-painel-2: #2a2320;
+  --fundo-campo: #171311;
+  --tinta: #ece4da;
+  --tinta-suave: #b0a396;
+  --tinta-fraca: #7d7166;
+  --borda: #3a312c;
+  --borda-forte: #574a42;
+  --realce: #e05339;
+  --realce-suave: #ef7256;
+  --ouro: #cfa652;
+  --sombra: 0 2px 12px rgba(0, 0, 0, .55);
+  --sombra-forte: 0 14px 46px rgba(0, 0, 0, .7);
+
+  --mar: #21414f;
+  --mar-fundo: #142a34;
+  --mar-raso: #336274;
+  --terra: #4b4335;
+  --deserto: #5d5440;
+  --floresta: #36472f;
+  --montanha: #57503f;
+  --rio: #3a6b7e;
+  --costa: #100d0a;
+  --veu-mapa: rgba(10, 16, 40, .2);
+  --contorno-rotulo: #12100e;
+}
+
+:root[data-fase="amanhecer"] { --veu-mapa: rgba(255, 186, 132, .16); }
+:root[data-fase="anoitecer"] { --veu-mapa: rgba(96, 38, 60, .38); }
+
+* { box-sizing: border-box; }
+
+html, body { margin: 0; padding: 0; height: 100%; }
+
+body {
+  background: var(--fundo);
+  color: var(--tinta);
+  font-family: var(--fonte-texto);
+  font-size: 14px;
+  line-height: 1.5;
+  overflow: hidden;
+  transition: background var(--transicao), color var(--transicao);
+}
+
+h1, h2, h3, h4 { font-family: var(--fonte-titulo); font-weight: 600; margin: 0; }
+
+a { color: var(--realce); }
+
+/* Títulos em versalete vermelho, como os do livro */
+.titulo-rubro {
+  font-family: var(--fonte-titulo);
+  color: var(--realce);
+  text-transform: uppercase;
+  letter-spacing: .09em;
+  font-weight: 700;
+}
+
+/* ---------- Barra superior ---------- */
+
+.barra {
+  height: var(--barra-altura);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 16px;
+  background: var(--fundo-painel);
+  border-bottom: 2px solid var(--realce);
+  box-shadow: var(--sombra);
+  position: relative;
+  z-index: 40;
+  transition: background var(--transicao), border-color var(--transicao);
+}
+
+.barra .marca {
+  font-family: var(--fonte-titulo);
+  font-size: 17px;
+  font-weight: 700;
+  white-space: nowrap;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  letter-spacing: .01em;
+}
+
+.barra .marca small {
+  font-size: 10.5px;
+  font-weight: 400;
+  color: var(--realce);
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  font-family: var(--fonte-texto);
+}
+
+.barra nav { display: flex; gap: 3px; margin-left: 6px; }
+
+.barra nav a, .barra nav button {
+  padding: 7px 13px;
+  border-radius: var(--raio-p);
+  border: none;
+  background: transparent;
+  color: var(--tinta-suave);
+  text-decoration: none;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 150ms, color 150ms;
+}
+
+.barra nav a:hover, .barra nav button:hover {
+  background: var(--fundo-painel-2);
+  color: var(--tinta);
+}
+
+.barra nav a.ativo { background: var(--realce); color: #fff; }
+
+.barra .espaco { flex: 1; }
+
+/* ---------- Botões ---------- */
+
+.botao {
+  font-family: inherit;
+  font-size: 13px;
+  padding: 7px 13px;
+  border-radius: var(--raio-p);
+  border: 1px solid var(--borda-forte);
+  background: var(--fundo-painel-2);
+  color: var(--tinta);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  transition: background 150ms, border-color 150ms, transform 80ms;
+}
+
+.botao:hover:not(:disabled) { border-color: var(--realce); }
+.botao:active:not(:disabled) { transform: translateY(1px); }
+.botao:disabled { opacity: .45; cursor: not-allowed; }
+
+.botao.primario {
+  background: var(--realce);
+  border-color: var(--realce);
+  color: #fff;
+}
+.botao.primario:hover:not(:disabled) { background: var(--realce-suave); }
+
+.botao.fantasma { background: transparent; border-color: transparent; color: var(--tinta-suave); }
+.botao.fantasma:hover:not(:disabled) { background: var(--fundo-painel-2); color: var(--tinta); }
+
+.botao.perigo { border-color: var(--t20-rubro-escuro); color: var(--realce); }
+.botao.perigo:hover:not(:disabled) { background: rgba(210, 40, 51, .12); }
+
+.botao.pequeno { padding: 4px 9px; font-size: 12px; }
+.botao.icone { padding: 6px 9px; }
+
+.grupo-botoes { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* ---------- Campos ---------- */
+
+label.campo { display: block; margin-bottom: 11px; }
+
+label.campo > span {
+  display: block;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: var(--tinta-fraca);
+  margin-bottom: 4px;
+}
+
+input[type="text"], input[type="number"], input[type="password"],
+input[type="search"], select, textarea {
+  width: 100%;
+  font-family: inherit;
+  font-size: 13px;
+  padding: 7px 9px;
+  border-radius: var(--raio-p);
+  border: 1px solid var(--borda);
+  background: var(--fundo-campo);
+  color: var(--tinta);
+  transition: border-color 150ms;
+}
+
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--realce); }
+textarea { resize: vertical; min-height: 66px; line-height: 1.45; }
+
+input[type="color"] {
+  width: 100%; height: 32px; padding: 2px;
+  border: 1px solid var(--borda);
+  border-radius: var(--raio-p);
+  background: var(--fundo-campo);
+  cursor: pointer;
+}
+
+input[type="range"] { width: 100%; accent-color: var(--realce); }
+input[type="checkbox"] { accent-color: var(--realce); }
+
+.linha-campos { display: flex; gap: 8px; }
+.linha-campos > * { flex: 1; min-width: 0; }
+
+/* ---------- Painéis ---------- */
+
+.painel-titulo {
+  font-family: var(--fonte-titulo);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .14em;
+  color: var(--realce);
+  padding: 12px 14px 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* ---------- Emblemas ---------- */
+
+.emblema {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--borda);
+  background: var(--fundo-painel-2);
+  color: var(--tinta-suave);
+  white-space: nowrap;
+}
+
+.emblema.mestre { border-color: var(--ouro); color: var(--ouro); }
+.emblema.desconectado { border-color: var(--realce); color: var(--realce); }
+
+/* ---------- Fase do dia ---------- */
+
+.fase-dia {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--borda);
+  background: var(--fundo-painel-2);
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+  transition: border-color 150ms;
+}
+
+.fase-dia:hover { border-color: var(--realce); }
+.fase-dia .astro { font-size: 14px; line-height: 1; }
+.fase-dia .relogio { font-variant-numeric: tabular-nums; font-weight: 600; }
+
+/* ---------- Modal ---------- */
+
+.fundo-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(30, 8, 12, .62);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  padding: 20px;
+}
+
+.fundo-modal[hidden] { display: none; }
+
+.modal {
+  background: var(--fundo-painel);
+  border: 1px solid var(--borda-forte);
+  border-top: 3px solid var(--realce);
+  border-radius: var(--raio);
+  box-shadow: var(--sombra-forte);
+  width: 100%;
+  max-width: 460px;
+  max-height: 85vh;
+  overflow: auto;
+  padding: 22px 24px;
+}
+
+.modal h2 { font-size: 19px; margin-bottom: 4px; }
+.modal .subtitulo { color: var(--tinta-fraca); font-size: 12.5px; margin-bottom: 18px; }
+.modal .rodape { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+
+.erro { color: var(--realce); font-size: 12.5px; min-height: 18px; margin-top: 6px; }
+
+/* ---------- Aviso flutuante ---------- */
+
+.aviso {
+  position: fixed;
+  bottom: 22px;
+  left: 50%;
+  transform: translateX(-50%) translateY(12px);
+  background: var(--fundo-painel);
+  border: 1px solid var(--borda-forte);
+  border-left: 3px solid var(--realce);
+  border-radius: var(--raio-p);
+  box-shadow: var(--sombra-forte);
+  padding: 10px 18px;
+  font-size: 13px;
+  z-index: 900;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 220ms, transform 220ms;
+}
+
+.aviso.visivel { opacity: 1; transform: translateX(-50%) translateY(0); }
+.aviso.erro-aviso { color: var(--realce); }
+
+/* ---------- Rolagem ---------- */
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--borda);
+  border-radius: 5px;
+  border: 2px solid var(--fundo-painel);
+}
+::-webkit-scrollbar-thumb:hover { background: var(--realce); }
+
+/* ---------- Utilidades ---------- */
+
+.oculto { display: none !important; }
+.so-mestre[data-visivel="nao"] { display: none !important; }
+.discreto { color: var(--tinta-fraca); font-size: 12px; }
+.vazio {
+  color: var(--tinta-fraca);
+  font-size: 12.5px;
+  padding: 20px 6px;
+  text-align: center;
+  line-height: 1.7;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition-duration: 1ms !important; animation-duration: 1ms !important; }
+}

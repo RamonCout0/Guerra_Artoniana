@@ -1,0 +1,469 @@
+/* =============================================================
+   CALENDÁRIO ARTONIANO — janela sobreposta
+   Abre por cima do mapa.
+   ============================================================= */
+
+.janela-calendario {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  display: flex;
+  background: rgba(28, 8, 12, .55);
+  backdrop-filter: blur(6px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 260ms ease;
+}
+
+.janela-calendario.aberta { opacity: 1; pointer-events: auto; }
+
+.janela-calendario .moldura {
+  flex: 1;
+  margin: 24px;
+  display: flex;
+  flex-direction: column;
+  background: var(--fundo-painel);
+  border: 1px solid var(--borda-forte);
+  border-top: 3px solid var(--realce);
+  border-radius: var(--raio);
+  box-shadow: var(--sombra-forte);
+  overflow: hidden;
+  transform: scale(.985) translateY(8px);
+  transition: transform 260ms cubic-bezier(.2, .9, .3, 1);
+}
+
+.janela-calendario.aberta .moldura { transform: none; }
+
+.calendario-cabecalho {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 16px;
+  border-bottom: 1px solid var(--borda);
+  flex-shrink: 0;
+}
+
+.calendario-cabecalho .titulo {
+  font-family: var(--fonte-titulo);
+  font-size: 16px;
+  font-weight: 700;
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+}
+
+.calendario-cabecalho .titulo small {
+  font-family: var(--fonte-texto);
+  font-size: 10px;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--realce);
+}
+
+.calendario-cabecalho .espaco { flex: 1; }
+
+.fechar-janela {
+  width: 32px; height: 32px;
+  border-radius: var(--raio-p);
+  border: 1px solid var(--borda);
+  background: var(--fundo-painel-2);
+  color: var(--tinta);
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: border-color 150ms, color 150ms;
+}
+
+.fechar-janela:hover { border-color: var(--realce); color: var(--realce); }
+
+.calendario-corpo {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 320px 1fr 330px;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.coluna {
+  overflow-y: auto;
+  padding: 16px;
+  background: var(--fundo-painel);
+  border-right: 1px solid var(--borda);
+  transition: background var(--transicao), border-color var(--transicao);
+}
+
+.coluna.centro {
+  background: var(--fundo);
+  border-right: none;
+  display: flex;
+  flex-direction: column;
+  padding: 16px 20px 28px;
+}
+
+.coluna.direita { border-right: none; border-left: 1px solid var(--borda); }
+
+/* ---------- Data corrente ---------- */
+
+.hoje {
+  border-radius: var(--raio);
+  border: 1px solid var(--borda-forte);
+  background: var(--fundo-painel-2);
+  padding: 16px 18px;
+  margin-bottom: 16px;
+  position: relative;
+  overflow: hidden;
+}
+
+.hoje::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(120% 80% at 80% -10%, rgba(255, 200, 120, .16), transparent 60%);
+}
+
+:root[data-tema="escuro"] .hoje::after {
+  background: radial-gradient(120% 80% at 80% -10%, rgba(120, 150, 255, .14), transparent 60%);
+}
+
+.hoje .selo {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: .14em;
+  color: var(--tinta-fraca);
+  margin-bottom: 8px;
+}
+
+.hoje .dia-semana {
+  font-family: var(--fonte-titulo);
+  font-size: 15px;
+  color: var(--ouro);
+  letter-spacing: .04em;
+}
+
+.hoje .data-grande {
+  font-family: var(--fonte-titulo);
+  font-size: 27px;
+  line-height: 1.15;
+  margin: 3px 0 6px;
+}
+
+.hoje .data-culta {
+  font-size: 12px;
+  font-style: italic;
+  color: var(--tinta-suave);
+  line-height: 1.5;
+}
+
+.hoje .relogio-arton {
+  font-family: var(--fonte-mono);
+  font-size: 33px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .02em;
+  margin: 12px 0 2px;
+}
+
+.hoje .detalhe-hora {
+  font-size: 12px;
+  color: var(--tinta-fraca);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.hoje .estacao {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--tinta-suave);
+  margin-top: 10px;
+}
+
+/* ---------- Controles do mestre ---------- */
+
+.controles-tempo {
+  margin-top: 14px;
+  padding-top: 13px;
+  border-top: 1px solid var(--borda);
+}
+
+.passos {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 5px;
+  margin-bottom: 7px;
+}
+
+.passos .botao {
+  justify-content: center;
+  padding: 6px 4px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Grade do mês ---------- */
+
+.cabecalho-mes {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.cabecalho-mes h2 {
+  font-size: 24px;
+  flex: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.cabecalho-mes h2 .ano {
+  font-size: 15px;
+  color: var(--tinta-fraca);
+  font-family: var(--fonte-texto);
+  font-weight: 400;
+}
+
+.legenda-mes {
+  font-size: 12.5px;
+  color: var(--tinta-suave);
+  font-style: italic;
+  line-height: 1.55;
+  margin-bottom: 14px;
+  max-width: 70ch;
+}
+
+.grade-semana {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.nome-dia {
+  text-align: center;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: var(--tinta-fraca);
+  padding-bottom: 4px;
+}
+
+.nome-dia.festa { color: var(--ouro); }
+.nome-dia.descanso { color: var(--realce-suave); }
+
+.grade-dias {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+  flex: 1;
+  align-content: start;
+}
+
+.dia {
+  position: relative;
+  min-height: 74px;
+  border: 1px solid var(--borda);
+  border-radius: var(--raio-p);
+  background: var(--fundo-painel);
+  padding: 6px 7px;
+  cursor: pointer;
+  transition: border-color 140ms, background 140ms, transform 100ms;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  overflow: hidden;
+}
+
+.dia:hover { border-color: var(--borda-forte); transform: translateY(-1px); }
+.dia.vazio { background: transparent; border-color: transparent; cursor: default; }
+.dia.vazio:hover { transform: none; }
+
+.dia .numero {
+  font-family: var(--fonte-titulo);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--tinta-suave);
+  line-height: 1;
+}
+
+.dia.hoje-marcado {
+  border-color: var(--realce);
+  border-width: 2px;
+  background: var(--fundo-painel-2);
+  box-shadow: 0 0 0 3px rgba(200, 80, 60, .14);
+}
+
+.dia.hoje-marcado .numero { color: var(--realce); }
+
+.dia.inicio-campanha::before {
+  content: "⚔️";
+  position: absolute;
+  top: 4px;
+  right: 5px;
+  font-size: 10px;
+  opacity: .75;
+}
+
+.dia.nimb {
+  background: repeating-linear-gradient(
+    45deg, transparent, transparent 7px,
+    rgba(160, 80, 200, .1) 7px, rgba(160, 80, 200, .1) 14px);
+  border-color: #8558a0;
+}
+
+.dia.nimb .numero { color: #a86bc4; }
+
+.dia .fitas { display: flex; flex-direction: column; gap: 2px; margin-top: auto; }
+
+.fita {
+  font-size: 9.5px;
+  line-height: 1.3;
+  padding: 2px 4px;
+  border-radius: 3px;
+  background: var(--fundo-painel-2);
+  color: var(--tinta-suave);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-left: 2px solid var(--borda-forte);
+}
+
+.fita.feriado { border-left-color: var(--ouro); color: var(--ouro); }
+.fita.festival { border-left-color: #4f9b6a; }
+.fita.perigo { border-left-color: var(--realce); color: var(--realce-suave); }
+.fita.evento { border-left-color: #4f7a9b; }
+.fita.nimb { border-left-color: #8558a0; color: #a86bc4; }
+.fita.nota { border-left-color: var(--tinta-fraca); font-style: italic; }
+
+.dia .marca-nota {
+  position: absolute;
+  bottom: 5px;
+  right: 6px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--realce);
+}
+
+/* ---------- Painel do dia ---------- */
+
+.detalhe-dia h3 {
+  font-family: var(--fonte-titulo);
+  font-size: 19px;
+  line-height: 1.25;
+}
+
+.detalhe-dia .culta {
+  font-size: 11.5px;
+  font-style: italic;
+  color: var(--tinta-fraca);
+  margin-top: 3px;
+  line-height: 1.5;
+}
+
+.evento {
+  border-left: 3px solid var(--ouro);
+  padding: 9px 12px;
+  margin: 10px 0;
+  background: var(--fundo-painel-2);
+  border-radius: 0 var(--raio-p) var(--raio-p) 0;
+}
+
+.evento h5 {
+  font-family: var(--fonte-titulo);
+  font-size: 14px;
+  margin: 0 0 4px;
+}
+
+.evento p { margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--tinta-suave); }
+.evento.tipo-perigo { border-left-color: var(--realce); }
+.evento.tipo-festival { border-left-color: #4f9b6a; }
+.evento.tipo-evento { border-left-color: #4f7a9b; }
+.evento.tipo-nimb { border-left-color: #8558a0; }
+
+/* ---------- Meses do lado ---------- */
+
+.lista-meses { display: flex; flex-direction: column; gap: 2px; }
+
+.item-mes {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 9px;
+  border-radius: var(--raio-p);
+  cursor: pointer;
+  font-size: 13px;
+  transition: background 130ms;
+}
+
+.item-mes:hover { background: var(--fundo-painel-2); }
+.item-mes.ativo { background: var(--fundo-painel-2); box-shadow: inset 2px 0 0 var(--realce); font-weight: 600; }
+.item-mes .indice {
+  font-size: 10.5px;
+  color: var(--tinta-fraca);
+  width: 16px;
+  font-variant-numeric: tabular-nums;
+}
+.item-mes .est { margin-left: auto; font-size: 11px; opacity: .8; }
+
+/* ---------- Relógio real ---------- */
+
+.relogio-real {
+  margin-top: 16px;
+  padding: 13px 15px;
+  border: 1px dashed var(--borda-forte);
+  border-radius: var(--raio);
+  font-size: 12.5px;
+  color: var(--tinta-suave);
+  line-height: 1.6;
+}
+
+.relogio-real .agora {
+  font-family: var(--fonte-mono);
+  font-size: 21px;
+  font-weight: 700;
+  color: var(--tinta);
+  font-variant-numeric: tabular-nums;
+  display: block;
+  margin-bottom: 2px;
+}
+
+/* ---------- Anotações ---------- */
+
+.anotacao textarea { min-height: 130px; }
+
+.aviso-leitura {
+  font-size: 12px;
+  padding: 9px 11px;
+  border-radius: var(--raio-p);
+  background: var(--fundo-painel-2);
+  border-left: 3px solid var(--borda-forte);
+  color: var(--tinta-fraca);
+  line-height: 1.5;
+}
+
+/* ---------- Responsivo ---------- */
+
+@media (max-width: 1250px) {
+  .calendario-corpo { grid-template-columns: 280px 1fr 300px; }
+  .hoje .relogio-arton { font-size: 28px; }
+}
+
+@media (max-width: 980px) {
+  .janela-calendario .moldura { margin: 0; border-radius: 0; }
+  .calendario-corpo {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr auto;
+    overflow-y: auto;
+  }
+  .coluna { border-right: none; border-bottom: 1px solid var(--borda); }
+  .coluna.direita { border-left: none; border-top: 1px solid var(--borda); }
+  .dia { min-height: 58px; }
+}
