@@ -57,6 +57,7 @@ var DadosMapa = (function () {
     },
     {
       id: 'yudennach',
+      brasao: 'de vermelho uma espada de prata',
       nome: 'Yudennach',
       nomeOficial: 'Reino de Yudennach — "o Exército com uma Nação"',
       categoria: 'reinado',
@@ -190,6 +191,7 @@ var DadosMapa = (function () {
     },
     {
       id: 'callistia',
+      brasao: 'de azul uma faixa ondada de prata',
       nome: 'Callistia',
       nomeOficial: 'Bacia de Callistia',
       categoria: 'reinado',
@@ -236,6 +238,7 @@ var DadosMapa = (function () {
     },
     {
       id: 'ghondriann',
+      brasao: 'de azul um castelo de prata',
       nome: 'Ghondriann',
       nomeOficial: 'Principado de Ghondriann',
       categoria: 'independente',
@@ -266,6 +269,7 @@ var DadosMapa = (function () {
     },
     {
       id: 'uniao-purpura',
+      brasao: 'de púrpura uma torre de prata',
       nome: 'União Púrpura',
       nomeOficial: 'União Púrpura',
       categoria: 'independente',
@@ -282,6 +286,7 @@ var DadosMapa = (function () {
     },
     {
       id: 'portsmouth',
+      brasao: 'de azul uma banda de prata',
       nome: 'Portsmouth',
       nomeOficial: 'Portsmouth',
       categoria: 'independente',
@@ -296,6 +301,7 @@ var DadosMapa = (function () {
     },
     {
       id: 'hongari',
+      brasao: 'de verde uma banda de ouro',
       nome: 'Hongari',
       nomeOficial: 'Hongari',
       categoria: 'independente',
@@ -310,6 +316,7 @@ var DadosMapa = (function () {
     },
     {
       id: 'tollon',
+      brasao: 'de verde uma árvore de ouro',
       nome: 'Floresta de Tollon',
       nomeOficial: 'Floresta de Tollon',
       categoria: 'regiao',
@@ -324,6 +331,7 @@ var DadosMapa = (function () {
     },
     {
       id: 'collen',
+      brasao: 'de azul uma faixa ondada de prata',
       nome: 'Collen',
       nomeOficial: 'Collen',
       categoria: 'independente',
@@ -338,6 +346,7 @@ var DadosMapa = (function () {
     },
     {
       id: 'tyrondir',
+      brasao: 'de prata uma bordadura de negro',
       nome: 'Tyrondir',
       nomeOficial: 'Reino de Tyrondir',
       categoria: 'independente',
@@ -353,6 +362,7 @@ var DadosMapa = (function () {
     },
     {
       id: 'petrynia',
+      brasao: 'de azul um sol de ouro',
       nome: 'Petrynia',
       nomeOficial: 'Petrynia',
       categoria: 'independente',
@@ -368,6 +378,7 @@ var DadosMapa = (function () {
     },
     {
       id: 'roddenphord',
+      brasao: 'de prata uma bordadura de azul',
       nome: 'Protetorado de Roddenphord',
       nomeOficial: 'Protetorado de Roddenphord',
       categoria: 'independente',
@@ -382,6 +393,7 @@ var DadosMapa = (function () {
     },
     {
       id: 'fortuna',
+      brasao: 'de ouro uma banda de verde',
       nome: 'Fortuna',
       nomeOficial: 'Fortuna',
       categoria: 'independente',
@@ -416,6 +428,7 @@ var DadosMapa = (function () {
     },
     {
       id: 'montanhas-sanguinarias',
+      brasao: 'de negro uma banda de vermelho',
       nome: 'Montanhas Sanguinárias',
       nomeOficial: 'Montanhas Sanguinárias',
       categoria: 'regiao',
@@ -431,6 +444,7 @@ var DadosMapa = (function () {
     },
     {
       id: 'montanhas-uivantes',
+      brasao: 'de prata uma bordadura de azul',
       nome: 'Montanhas Uivantes',
       nomeOficial: 'Montanhas Uivantes',
       categoria: 'regiao',
@@ -461,6 +475,7 @@ var DadosMapa = (function () {
     },
     {
       id: 'hangpharstyth',
+      brasao: 'de verde um chefe de ouro',
       nome: 'Istmo de Hangpharstyth',
       nomeOficial: 'Istmo de Hangpharstyth',
       categoria: 'regiao',
@@ -476,6 +491,7 @@ var DadosMapa = (function () {
     },
     {
       id: 'tapista',
+      brasao: 'de azul uma faixa de ouro',
       nome: 'Tapista',
       nomeOficial: 'Tapista',
       categoria: 'regiao',
@@ -491,6 +507,7 @@ var DadosMapa = (function () {
     },
     {
       id: 'greenleaf',
+      brasao: 'de verde uma árvore de ouro',
       nome: 'Floresta Greenleaf',
       nomeOficial: 'Floresta Greenleaf',
       categoria: 'regiao',
@@ -505,6 +522,7 @@ var DadosMapa = (function () {
     },
     {
       id: 'lamnor',
+      brasao: 'de azul um crescente de prata',
       nome: 'Vannestuir (Lamnor)',
       nomeOficial: 'Terras de Vannestuir, em Lamnor',
       categoria: 'regiao',
@@ -537,6 +555,7 @@ var DadosMapa = (function () {
     },
     {
       id: 'grande-savana',
+      brasao: 'de ouro uma árvore de verde',
       nome: 'A Grande Savana',
       nomeOficial: 'A Grande Savana',
       categoria: 'regiao',
@@ -551,6 +570,7 @@ var DadosMapa = (function () {
     },
     {
       id: 'galrasia',
+      brasao: 'de azul uma estrela de prata',
       nome: 'Galrasia',
       nomeOficial: 'Ilha de Galrasia',
       categoria: 'regiao',
@@ -568,6 +588,7 @@ var DadosMapa = (function () {
     /* ---------------- ÁREAS DE TORMENTA ---------------- */
     {
       id: 'tormenta-norte',
+      brasao: 'de vermelho uma bordadura de negro',
       nome: 'Tormenta do Norte',
       nomeOficial: 'Área de Tormenta',
       categoria: 'tormenta',
@@ -583,6 +604,7 @@ var DadosMapa = (function () {
     },
     {
       id: 'tormenta-savana',
+      brasao: 'de vermelho uma bordadura de negro',
       nome: 'Tormenta da Savana',
       nomeOficial: 'Área de Tormenta',
       categoria: 'tormenta',
@@ -597,6 +619,7 @@ var DadosMapa = (function () {
     },
     {
       id: 'tormenta-zakharov',
+      brasao: 'de vermelho uma bordadura de negro',
       nome: 'Tormenta de Zakharov',
       nomeOficial: 'Área de Tormenta',
       categoria: 'tormenta',
@@ -611,6 +634,7 @@ var DadosMapa = (function () {
     },
     {
       id: 'tormenta-tyzzia',
+      brasao: 'de vermelho uma bordadura de negro',
       nome: 'Tormenta de Tyzzia',
       nomeOficial: 'Área de Tormenta',
       categoria: 'tormenta',
@@ -625,6 +649,7 @@ var DadosMapa = (function () {
     },
     {
       id: 'tormenta-oriental',
+      brasao: 'de vermelho uma bordadura de negro',
       nome: 'Tormenta Oriental',
       nomeOficial: 'Área de Tormenta',
       categoria: 'tormenta',
@@ -641,6 +666,7 @@ var DadosMapa = (function () {
     /* ---------------- MARES ---------------- */
     {
       id: 'mar-negro',
+      brasao: 'de azul uma faixa de prata',
       nome: 'Mar Negro',
       nomeOficial: 'Mar Negro',
       categoria: 'mar',
@@ -652,6 +678,7 @@ var DadosMapa = (function () {
     },
     {
       id: 'mar-de-flok',
+      brasao: 'de azul uma faixa de prata',
       nome: 'Mar de Flok',
       nomeOficial: 'Mar de Flok',
       categoria: 'mar',
@@ -663,6 +690,7 @@ var DadosMapa = (function () {
     },
     {
       id: 'grande-oceano',
+      brasao: 'de azul uma faixa de prata',
       nome: 'Grande Oceano',
       nomeOficial: 'Grande Oceano',
       categoria: 'mar',

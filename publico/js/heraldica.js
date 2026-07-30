@@ -51,6 +51,7 @@ var Heraldica = (function () {
     'torre': 'torre', 'castelo': 'castelo',
     'cavalo': 'cavalo', 'leopardo': 'felino', 'leões': 'felino', 'leão': 'felino',
     'raposas': 'raposa', 'raposa': 'raposa',
+    'dragão marinho': 'dragaoMarinho', 'cavalo marinho': 'dragaoMarinho',
     'dragão': 'dragao', 'touro': 'touro',
     'espadas': 'espada', 'espada': 'espada',
     'cimitarras': 'cimitarra', 'cimitarra': 'cimitarra',
@@ -312,6 +313,22 @@ var Heraldica = (function () {
       g.appendChild(el('path', {
         d: 'M-3 12 C-11 12 -15 6 -12 1 L-9 3 C-11 6 -8 9 -3 8 Z', fill: c
       }));
+    },
+
+    dragaoMarinho: function (g, c) {
+      // corpo em S, como serpente do mar
+      g.appendChild(el('path', {
+        d: 'M-17 8 C-11 8 -9 2 -3 1 C4 0 7 -6 4 -11 L9 -13 C14 -5 9 4 0 6 ' +
+           'C-5 7 -7 12 -14 13 Z', fill: c
+      }));
+      // barbatana dorsal
+      g.appendChild(el('path', { d: 'M-6 2 L-4 -4 L-1 1 L2 -5 L4 0 Z', fill: c }));
+      // cabeça coroada e focinho
+      g.appendChild(el('path', { d: 'M4 -11 L11 -18 L16 -14 L9 -9 Z', fill: c }));
+      g.appendChild(el('path', { d: 'M14 -16 L19 -19 L18 -14 Z', fill: c }));
+      g.appendChild(el('path', { d: 'M9 -19 L11 -23 L13 -19 L15 -23 L16 -18 Z', fill: c }));
+      // cauda em leque
+      g.appendChild(el('path', { d: 'M-17 8 L-21 3 L-19 9 L-22 13 L-16 13 Z', fill: c }));
     },
 
     ave: function (g, c) {
