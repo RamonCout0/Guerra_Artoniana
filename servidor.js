@@ -10,6 +10,8 @@
    Variáveis de ambiente:
      PORT          porta HTTP (o Railway define sozinho)
      SENHA_MESTRE  senha do mestre                  (padrão: "mestre")
+     SENHA_JOGADOR senha da mesa; sem ela, ninguém entra. Se ficar vazia,
+                   o link é aberto a qualquer pessoa (como era antes).
      SEGREDO       segredo para assinar o cookie    (padrão: derivado da senha)
      DADOS_DIR     pasta onde o estado é gravado    (padrão: ./dados)
    ============================================================= */
@@ -23,6 +25,8 @@ var crypto = require('crypto');
 
 var PORTA = parseInt(process.env.PORT, 10) || 3000;
 var SENHA_MESTRE = process.env.SENHA_MESTRE || 'mestre';
+var SENHA_JOGADOR = process.env.SENHA_JOGADOR || '';
+var PORTAO_FECHADO = SENHA_JOGADOR.length > 0;   // exige senha até para olhar
 var SEGREDO = process.env.SEGREDO ||
   crypto.createHash('sha256').update('artoniana:' + SENHA_MESTRE).digest('hex');
 var DADOS_DIR = process.env.DADOS_DIR || path.join(__dirname, 'dados');
@@ -88,28 +92,38 @@ function assinar(valor) {
   return crypto.createHmac('sha256', SEGREDO).update(valor).digest('hex').slice(0, 32);
 }
 
-function criarToken() {
+function criarToken(nivel) {
   var expira = Date.now() + DURACAO_SESSAO_MS;
-  var corpo = 'mestre.' + expira;
+  var corpo = nivel + '.' + expira;
   return corpo + '.' + assinar(corpo);
 }
 
-function tokenValido(token) {
-  if (!token) return false;
+/* Devolve 'mestre', 'jogador' ou null. Cookies antigos diziam só
+   'mestre' e continuam valendo. */
+function nivelDoToken(token) {
+  if (!token) return null;
   var partes = token.split('.');
-  if (partes.length !== 3 || partes[0] !== 'mestre') return false;
+  if (partes.length !== 3) return null;
+  if (partes[0] !== 'mestre' && partes[0] !== 'jogador') return null;
   var corpo = partes[0] + '.' + partes[1];
-  var esperado = assinar(corpo);
-  if (!comparacaoSegura(esperado, partes[2])) return false;
-  return parseInt(partes[1], 10) > Date.now();
+  if (!comparacaoSegura(assinar(corpo), partes[2])) return null;
+  if (parseInt(partes[1], 10) <= Date.now()) return null;
+  return partes[0];
 }
 
 /* Compara pelo resumo: dá sempre o mesmo tamanho, então nem o tempo
    nem o comprimento da resposta contam quantos caracteres tem a senha. */
-function senhaConfere(tentativa) {
+function confereCom(tentativa, alvo) {
   var a = crypto.createHash('sha256').update(String(tentativa)).digest();
-  var b = crypto.createHash('sha256').update(SENHA_MESTRE).digest();
+  var b = crypto.createHash('sha256').update(String(alvo)).digest();
   return crypto.timingSafeEqual(a, b);
+}
+
+/* Qual porta a senha abre: a do mestre, a da mesa, ou nenhuma. */
+function nivelDaSenha(tentativa) {
+  if (confereCom(tentativa, SENHA_MESTRE)) return 'mestre';
+  if (PORTAO_FECHADO && confereCom(tentativa, SENHA_JOGADOR)) return 'jogador';
+  return null;
 }
 
 function comparacaoSegura(a, b) {
@@ -137,8 +151,16 @@ function lerCookies(req) {
   return saida;
 }
 
+/* Sem SENHA_JOGADOR configurada o link é aberto, como antes: quem chega
+   entra como jogador. Com ela, quem não tem cookie não passa da porta. */
+function nivelDoPedido(req) {
+  var nivel = nivelDoToken(lerCookies(req).artoniana_mestre);
+  if (nivel) return nivel;
+  return PORTAO_FECHADO ? null : 'jogador';
+}
+
 function ehMestre(req) {
-  return tokenValido(lerCookies(req).artoniana_mestre);
+  return nivelDoPedido(req) === 'mestre';
 }
 
 /* Atrás do proxy do Railway todas as conexões vêm do mesmo endereço, então
@@ -183,6 +205,19 @@ function registrarFalha(ip) {
   geral.contagem++;
   // não deixa a tabela crescer sem fim
   if (Object.keys(tentativas).length > 5000) tentativas = {};
+}
+
+/* Freio leve no diário: ninguém precisa escrever mais que isso por minuto. */
+var escritas = {};
+function podeEscreverDiario(ip) {
+  var agora = Date.now();
+  var r = escritas[ip];
+  if (!r || agora - r.desde > 60 * 1000) { escritas[ip] = { contagem: 0, desde: agora }; return true; }
+  return r.contagem < 30;
+}
+function registrarEscrita(ip) {
+  if (escritas[ip]) escritas[ip].contagem++;
+  if (Object.keys(escritas).length > 5000) escritas = {};
 }
 
 /* ------------------------------------------------------------------
@@ -288,10 +323,21 @@ function enviarArquivo(req, res, destino, info) {
    ------------------------------------------------------------------ */
 
 function tratarApi(req, res, rota, consulta) {
-  var mestre = ehMestre(req);
+  var nivel = nivelDoPedido(req);
+  var mestre = nivel === 'mestre';
+  var entrou = nivel !== null;
+
+  function semSenha() {
+    return responderJson(res, 401, {
+      erro: 'Esta mesa é fechada. Peça a senha ao mestre.',
+      precisaSenha: true
+    });
+  }
 
   if (rota === '/api/sessao' && req.method === 'GET') {
-    return responderJson(res, 200, { mestre: mestre, ano: 1410 });
+    return responderJson(res, 200, {
+      mestre: mestre, nivel: nivel, portaoFechado: PORTAO_FECHADO, ano: 1410
+    });
   }
 
   if (rota === '/api/login' && req.method === 'POST') {
@@ -302,14 +348,17 @@ function tratarApi(req, res, rota, consulta) {
     return lerCorpo(req, function (erro, corpo) {
       if (erro) return responderJson(res, 400, { erro: 'Requisição inválida.' });
       var senha = String((corpo && corpo.senha) || '');
-      if (!senhaConfere(senha)) {
+      var nivelNovo = nivelDaSenha(senha);
+      if (!nivelNovo) {
         registrarFalha(ip);
         return responderJson(res, 401, { erro: 'Senha incorreta.' });
       }
-      var cookie = 'artoniana_mestre=' + criarToken() +
+      var cookie = 'artoniana_mestre=' + criarToken(nivelNovo) +
         '; Path=/; HttpOnly; SameSite=Lax; Max-Age=' + Math.floor(DURACAO_SESSAO_MS / 1000) +
         (protocoloHttps(req) ? '; Secure' : '');
-      responderJson(res, 200, { mestre: true }, { 'Set-Cookie': cookie });
+      responderJson(res, 200, {
+        mestre: nivelNovo === 'mestre', nivel: nivelNovo
+      }, { 'Set-Cookie': cookie });
     });
   }
 
@@ -322,13 +371,15 @@ function tratarApi(req, res, rota, consulta) {
   /* Só o carimbo de tempo — os jogadores consultam isto a cada poucos
      segundos para saber se vale a pena baixar o estado inteiro. */
   if (rota === '/api/versao' && req.method === 'GET') {
+    if (!entrou) return semSenha();
     return responderJson(res, 200, {
       atualizadoEm: estado.atualizadoEm,
-      mestre: mestre
+      mestre: mestre, nivel: nivel
     });
   }
 
   if (rota === '/api/estado' && req.method === 'GET') {
+    if (!entrou) return semSenha();
     var desde = parseInt(consulta.desde, 10);
     if (desde && desde >= estado.atualizadoEm) {
       return responderJson(res, 200, { semMudanca: true, atualizadoEm: estado.atualizadoEm });
@@ -338,7 +389,7 @@ function tratarApi(req, res, rota, consulta) {
       atualizadoEm: estado.atualizadoEm,
       mapa: estado.mapa,
       calendario: estado.calendario,
-      mestre: mestre
+      mestre: mestre, nivel: nivel
     });
   }
 
@@ -354,6 +405,62 @@ function tratarApi(req, res, rota, consulta) {
       if (corpo.calendario !== undefined) estado.calendario = corpo.calendario;
       estado.atualizadoEm = Date.now();
       salvarEstado();
+      responderJson(res, 200, { ok: true, atualizadoEm: estado.atualizadoEm });
+    });
+  }
+
+  /* O diário é a única coisa que um jogador pode escrever: a entrada do
+     próprio herói, num dia. Nada mais do estado é gravável por ele.
+     Como não há senha por jogador, quem tem o link pode escrever como
+     qualquer herói da lista — é uma mesa de amigos, não um fórum aberto.
+     O mestre lê tudo e pode apagar o que quiser. */
+  if (rota === '/api/diario' && req.method === 'POST') {
+    if (!entrou) return semSenha();
+    var ipDiario = ipDoPedido(req);
+    if (!podeEscreverDiario(ipDiario)) {
+      return responderJson(res, 429, { erro: 'Calma. Espere um pouco antes de escrever de novo.' });
+    }
+    return lerCorpo(req, function (erro, corpo) {
+      if (erro) return responderJson(res, 400, { erro: 'Requisição inválida.' });
+
+      var chave = String((corpo && corpo.chave) || '');
+      var autor = String((corpo && corpo.autor) || '');
+      var texto = String((corpo && corpo.texto) || '');
+
+      // chave de dia: "1410-3-5" ou, nos Dias de Nimb, "1410-N-2"
+      if (!/^-?\d{1,6}-(N|\d{1,2})-\d{1,2}$/.test(chave)) {
+        return responderJson(res, 400, { erro: 'Dia inválido.' });
+      }
+      if (texto.length > 4000) {
+        return responderJson(res, 400, { erro: 'Texto longo demais (máximo 4.000 caracteres).' });
+      }
+
+      if (autor === 'mestre') {
+        if (!mestre) return responderJson(res, 403, { erro: 'Só o mestre escreve como mestre.' });
+      } else {
+        var heroi = estado.mapa && Array.isArray(estado.mapa.tokens) &&
+          estado.mapa.tokens.filter(function (t) { return t.id === autor && t.nome; })[0];
+        if (!heroi) {
+          return responderJson(res, 403, { erro: 'Esse herói não existe no grupo.' });
+        }
+      }
+
+      if (!estado.calendario) estado.calendario = { versao: 1, notas: {} };
+      if (!estado.calendario.notas) estado.calendario.notas = {};
+
+      var doDia = estado.calendario.notas[chave];
+      if (typeof doDia === 'string') doDia = { mestre: doDia };   // formato antigo
+      if (!doDia || typeof doDia !== 'object') doDia = {};
+
+      if (texto.trim()) doDia[autor] = texto.trim();
+      else delete doDia[autor];
+
+      if (Object.keys(doDia).length) estado.calendario.notas[chave] = doDia;
+      else delete estado.calendario.notas[chave];
+
+      estado.atualizadoEm = Date.now();
+      salvarEstado();
+      registrarEscrita(ipDiario);
       responderJson(res, 200, { ok: true, atualizadoEm: estado.atualizadoEm });
     });
   }
@@ -405,6 +512,14 @@ servidor.listen(PORTA, function () {
   console.log('  ---------------------------------------------');
   console.log('  Servindo em  http://localhost:' + PORTA);
   console.log('  Dados em     ' + ARQUIVO_ESTADO);
+  console.log('  Acesso       ' + (PORTAO_FECHADO
+    ? 'fechado — só quem tem a senha da mesa entra'
+    : 'ABERTO — qualquer pessoa com o link vê tudo'));
+  if (!PORTAO_FECHADO) {
+    console.log('');
+    console.log('  ⚠️  SENHA_JOGADOR não definida — o link é público.');
+    console.log('     Defina-a para que só a sua mesa entre.');
+  }
   if (!process.env.SENHA_MESTRE) {
     console.log('');
     console.log('  ⚠️  SENHA_MESTRE não definida — usando "mestre".');

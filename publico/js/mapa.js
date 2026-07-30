@@ -23,6 +23,7 @@ var MapaArton = (function () {
   var ALTURA = DadosMapa.ALTURA_VIEWBOX;
   var TIPOS = DadosMapa.TIPOS_CIDADE;
   var CATEGORIAS = DadosMapa.CATEGORIAS;
+  var GUERRA = DadosMapa.ESTADOS_GUERRA;
   var RECORTE = (typeof GeografiaArton !== 'undefined' && GeografiaArton.RECORTE) ||
                 { x: 0, y: 0, largura: LARGURA, altura: ALTURA };
 
@@ -36,11 +37,15 @@ var MapaArton = (function () {
   var categoriasOcultas = { mar: true };
   var vista = { x: RECORTE.x, y: RECORTE.y, w: RECORTE.largura, h: RECORTE.altura };
 
-  var raiz, svg, palco, defsTokens;
+  var raiz, svg, palco, defsTokens, defsGuerra;
   var camadaTerritorios, camadaCidades, camadaRotulos, camadaTokens, camadaEdicao;
   var rascunho = [], regua = [], arrasto = null;
+  var dedos = {};               // ponteiros ativos, para a pinça
+  var pinca = null;             // { distancia, meio }
   var montado = false;
   var tokenEmEdicao = null, fotoEmEdicao = null;
+  var momentoVisto = null;      // null = o presente; senão, um id da crônica
+  var espiandoNevoa = false;    // o mestre enxergando através da névoa
 
   /* ---------------- utilidades ---------------- */
 
@@ -57,8 +62,9 @@ var MapaArton = (function () {
   }
 
   function acharNacao(id) {
-    for (var i = 0; i < dados.nacoes.length; i++) {
-      if (dados.nacoes[i].id === id) return dados.nacoes[i];
+    var lista = (typeof nacoesEmCena === 'function') ? nacoesEmCena() : dados.nacoes;
+    for (var i = 0; i < lista.length; i++) {
+      if (lista[i].id === id) return lista[i];
     }
     return null;
   }
@@ -91,7 +97,7 @@ var MapaArton = (function () {
   }
 
   function ehMestre() { return Sincronia.ehMestre(); }
-  function salvar() { if (ehMestre()) Sincronia.salvarMapa(dados); }
+  function salvar() { if (ehMestre() && !vendoOPassado()) Sincronia.salvarMapa(dados); }
 
   function centroide(pontos) {
     var sx = 0, sy = 0;
@@ -157,6 +163,7 @@ var MapaArton = (function () {
             '<line x1="0" y1="0" x2="0" y2="6" stroke="#8c1118" stroke-width="2.2"/>' +
           '</pattern>' +
           '<g id="defs-tokens"></g>' +
+          '<g id="defs-guerra"></g>' +
         '</defs>' +
         '<g clip-path="url(#recorte-prancha)">' +
           '<rect id="fundo-mar" class="geo-mar"/>' +
@@ -170,6 +177,11 @@ var MapaArton = (function () {
         '</g>' +
       '</svg>' +
 
+      '<div class="gavetas">' +
+        '<button class="gaveta-botao" id="gaveta-lista" title="Reinos e grupo">☰</button>' +
+        '<button class="gaveta-botao" id="gaveta-ficha" title="Detalhes">ⓘ</button>' +
+      '</div>' +
+
       '<div class="ferramentas">' +
         '<div class="grupo-ferramentas">' +
           '<button class="ferramenta ativa" data-ferramenta="selecionar" title="Navegar (V)">🖐️</button>' +
@@ -178,6 +190,7 @@ var MapaArton = (function () {
         '<div class="grupo-ferramentas so-mestre" id="mapa-ferramentas-mestre" data-visivel="nao">' +
           '<button class="ferramenta" data-ferramenta="territorio" title="Novo território (T)">✏️</button>' +
           '<button class="ferramenta" data-ferramenta="cidade" title="Nova cidade (C)">📍</button>' +
+          '<button class="ferramenta" id="mapa-espiar" title="Espiar através da névoa (N) — só você vê">🌫️</button>' +
         '</div>' +
         '<div class="grupo-ferramentas">' +
           '<button class="ferramenta ativa" id="mapa-rotulos" title="Rótulos (L)">🏷️</button>' +
@@ -204,6 +217,8 @@ var MapaArton = (function () {
       '</div>' +
       '<div class="dica-mapa" id="mapa-dica"></div>' +
       '<div class="faixa-edicao" id="faixa-edicao" hidden></div>' +
+      '<div class="tarja-cronica" id="tarja-cronica" hidden></div>' +
+      '<div class="cronica" id="cronica" hidden></div>' +
     '</main>' +
 
     '<aside class="lateral direita">' +
@@ -218,6 +233,7 @@ var MapaArton = (function () {
     svg = $('#mapa-svg');
     palco = $('#mapa-palco');
     defsTokens = $('#defs-tokens');
+    defsGuerra = $('#defs-guerra');
     camadaTerritorios = $('#camada-territorios');
     camadaCidades = $('#camada-cidades');
     camadaRotulos = $('#camada-rotulos');
@@ -241,8 +257,49 @@ var MapaArton = (function () {
     ligarModalToken();
     ligarRecortador();
 
+    ligarGavetas();
     Interface.pintarPapel();
     montado = true;
+  }
+
+  /* ---------------- gavetas do celular ----------------
+     Numa tela estreita as três colunas não caberiam, então as laterais
+     viram gavetas que entram por cima do mapa. No computador os botões
+     nem aparecem. */
+  function ligarGavetas() {
+    function alternar(qual) {
+      var abrindo = !raiz.classList.contains(qual + '-aberta');
+      raiz.classList.remove('lista-aberta', 'ficha-aberta');
+      if (abrindo) raiz.classList.add(qual + '-aberta');
+      atualizarBotoesGaveta();
+    }
+
+    var bl = $('#gaveta-lista'), bf = $('#gaveta-ficha');
+    if (bl) bl.addEventListener('click', function () { alternar('lista'); });
+    if (bf) bf.addEventListener('click', function () { alternar('ficha'); });
+
+    // tocar no mapa fecha a gaveta aberta
+    svg.addEventListener('pointerdown', function () {
+      if (raiz.classList.contains('lista-aberta') || raiz.classList.contains('ficha-aberta')) {
+        raiz.classList.remove('lista-aberta', 'ficha-aberta');
+        atualizarBotoesGaveta();
+      }
+    }, true);
+  }
+
+  function atualizarBotoesGaveta() {
+    var bl = $('#gaveta-lista'), bf = $('#gaveta-ficha');
+    if (bl) bl.classList.toggle('ativa', raiz.classList.contains('lista-aberta'));
+    if (bf) bf.classList.toggle('ativa', raiz.classList.contains('ficha-aberta'));
+  }
+
+  /* Selecionar algo no celular abre a ficha sozinho — senão o toque
+     parece não ter feito nada. */
+  function mostrarFichaNoCelular() {
+    if (!raiz || window.innerWidth > 820) return;
+    raiz.classList.remove('lista-aberta');
+    raiz.classList.add('ficha-aberta');
+    atualizarBotoesGaveta();
   }
 
   /* ---------------- geografia ---------------- */
@@ -290,6 +347,7 @@ var MapaArton = (function () {
     var z = $('#mapa-zoom');
     if (z) z.textContent = Math.round((RECORTE.largura / vista.w) * 100) + '%';
     atualizarTamanhos();
+    atualizarTramas();
     atualizarEscala();
   }
 
@@ -446,6 +504,315 @@ var MapaArton = (function () {
     return [Math.round(m.x * 100) / 100, Math.round(m.y * 100) / 100];
   }
 
+  /* ---------------- a crônica ----------------
+     O mapa guarda só o agora. A crônica dá memória a ele: o mestre
+     registra um momento carimbado com a data artoniana, e depois dá
+     para percorrer a linha do tempo e ver a guerra acontecer.
+     Cada momento guarda apenas o que muda numa guerra — contorno,
+     cor, quem manda — e não o texto das fichas, que pesaria à toa. */
+
+  function momentos() {
+    if (!Array.isArray(dados.cronica)) dados.cronica = [];
+    return dados.cronica;
+  }
+
+  function acharMomento(id) {
+    for (var i = 0; i < momentos().length; i++) {
+      if (momentos()[i].id === id) return momentos()[i];
+    }
+    return null;
+  }
+
+  /* As nações que estão na tela: as de agora, ou as de um momento passado. */
+  function nacoesEmCena() {
+    if (!momentoVisto) return dados.nacoes;
+    var m = acharMomento(momentoVisto);
+    return m ? m.nacoes : dados.nacoes;
+  }
+
+  function vendoOPassado() { return momentoVisto !== null; }
+
+  /* Pode mexer? Só no presente, e só sendo mestre. */
+  function podeEditar() { return ehMestre() && !vendoOPassado(); }
+
+  function registrarMomento() {
+    if (!ehMestre()) return;
+    var data = (typeof CalendarioJanela !== 'undefined')
+      ? CalendarioJanela.dataAtual()
+      : { ano: 1410, mes: 3, dia: 5, nimb: false };
+
+    var titulo = prompt('O que aconteceu neste momento?\n\n' +
+      'Ex.: "Yudennach cruza a fronteira", "Cerco de Valkaria"',
+      'Momento de ' + CalendarioArton.formatarColoquial(data));
+    if (titulo === null) return;
+
+    var registro = {
+      id: 'm' + Date.now().toString(36),
+      data: data,
+      rotulo: (titulo || '').trim() || CalendarioArton.formatarColoquial(data),
+      criadoEm: Date.now(),
+      nacoes: dados.nacoes.map(function (n) {
+        return {
+          id: n.id, nome: n.nome, cor: n.cor, categoria: n.categoria,
+          poligono: JSON.parse(JSON.stringify(n.poligono || [])),
+          rotulo: n.rotulo ? { x: n.rotulo.x, y: n.rotulo.y } : null,
+          estadoGuerra: n.estadoGuerra || 'neutro',
+          controladoPor: n.controladoPor || null,
+          conhecido: n.conhecido !== false,
+          visivel: n.visivel !== false
+        };
+      })
+    };
+
+    momentos().push(registro);
+    momentos().sort(function (a, b) {
+      return CalendarioArton.paraAbsoluto(a.data) - CalendarioArton.paraAbsoluto(b.data);
+    });
+    salvar();
+    renderCronica();
+    Interface.avisar('Momento registrado: ' + registro.rotulo);
+  }
+
+  function verMomento(id) {
+    momentoVisto = id;
+    selecao = null;
+    editandoVertices = false;
+    if (montado) {
+      desenhar(); renderLista(); renderInspetor(); renderCronica();
+      Interface.pintarPapel();
+    }
+  }
+
+  function voltarAoPresente() {
+    if (momentoVisto === null) return;
+    momentoVisto = null;
+    selecao = null;
+    if (montado) {
+      desenhar(); renderLista(); renderInspetor(); renderCronica();
+      Interface.pintarPapel();
+    }
+  }
+
+  function apagarMomento(id) {
+    var m = acharMomento(id);
+    if (!m || !ehMestre()) return;
+    if (!confirm('Apagar o momento "' + m.rotulo + '" da crônica?')) return;
+    dados.cronica = momentos().filter(function (o) { return o.id !== id; });
+    if (momentoVisto === id) voltarAoPresente();
+    salvar();
+    renderCronica();
+  }
+
+  /* Traz um momento de volta para o presente: geometria e domínios
+     voltam a valer, o resto da ficha fica como está hoje. */
+  function restaurarMomento(id) {
+    var m = acharMomento(id);
+    if (!m || !ehMestre()) return;
+    if (!confirm('Trazer "' + m.rotulo + '" de volta para o presente?\n\n' +
+                 'As fronteiras e os domínios de agora serão substituídos pelos daquele dia.')) return;
+    m.nacoes.forEach(function (antiga) {
+      var atual = acharNacao(antiga.id);
+      if (!atual) return;
+      atual.poligono = JSON.parse(JSON.stringify(antiga.poligono));
+      if (antiga.rotulo) atual.rotulo = { x: antiga.rotulo.x, y: antiga.rotulo.y };
+      atual.estadoGuerra = antiga.estadoGuerra;
+      atual.controladoPor = antiga.controladoPor;
+      atual.conhecido = antiga.conhecido;
+      atual.visivel = antiga.visivel;
+    });
+    momentoVisto = null;
+    salvar();
+    desenhar(); renderLista(); renderInspetor(); renderCronica();
+    Interface.avisar('O mapa voltou a ' + CalendarioArton.formatarColoquial(m.data) + '.');
+  }
+
+  function renderCronica() {
+    var caixa = $('#cronica');
+    if (!caixa) return;
+    var lista = momentos();
+    var mestre = ehMestre();
+
+    if (!lista.length && !mestre) { caixa.hidden = true; return; }
+    caixa.hidden = false;
+
+    var html = '<div class="cronica-inicio">' +
+      (mestre ? '<button class="botao pequeno primario" id="cronica-registrar" ' +
+                'title="Guarda o mapa de hoje na linha do tempo">📸 Registrar momento</button>' : '') +
+      '<span class="cronica-titulo">Crônica da guerra</span></div>';
+
+    html += '<div class="cronica-trilho">';
+    if (!lista.length) {
+      html += '<span class="cronica-vazia">Nenhum momento registrado ainda. ' +
+              'Guarde o mapa de hoje e vá guardando conforme a guerra anda.</span>';
+    } else {
+      lista.forEach(function (m) {
+        var ativo = momentoVisto === m.id;
+        html += '<button class="cronica-marco' + (ativo ? ' ativo' : '') + '" data-momento="' +
+          esc(m.id) + '" title="' + esc(m.rotulo) + '">' +
+          '<span class="marco-ponto"></span>' +
+          '<span class="marco-data">' + esc(CalendarioArton.formatarNumerica(m.data)) + '</span>' +
+          '<span class="marco-rotulo">' + esc(m.rotulo) + '</span>' +
+          '</button>';
+      });
+      html += '<button class="cronica-marco agora' + (momentoVisto === null ? ' ativo' : '') +
+        '" data-momento="" title="Voltar para o mapa de hoje">' +
+        '<span class="marco-ponto"></span>' +
+        '<span class="marco-data">agora</span>' +
+        '<span class="marco-rotulo">O presente</span></button>';
+    }
+    html += '</div>';
+
+    caixa.innerHTML = html;
+
+    var botaoRegistrar = $('#cronica-registrar', caixa);
+    if (botaoRegistrar) botaoRegistrar.addEventListener('click', registrarMomento);
+
+    $$('[data-momento]', caixa).forEach(function (b) {
+      b.addEventListener('click', function () {
+        var id = b.getAttribute('data-momento');
+        if (id) verMomento(id); else voltarAoPresente();
+      });
+    });
+
+    // tarja avisando que o mapa é de outro dia
+    var tarja = $('#tarja-cronica');
+    if (tarja) {
+      var m = momentoVisto ? acharMomento(momentoVisto) : null;
+      tarja.hidden = !m;
+      if (m) {
+        tarja.innerHTML = '<span class="brasao-estado">🕰️</span>' +
+          '<span><b>' + esc(m.rotulo) + '</b><br>' +
+          'O mapa como estava em ' + esc(CalendarioArton.formatarColoquial(m.data)) +
+          ' — nada aqui pode ser alterado.</span>' +
+          '<span class="espaco" style="flex:1"></span>' +
+          (ehMestre() ? '<button class="botao pequeno" data-restaurar>↩ Trazer para hoje</button>' +
+                        '<button class="botao pequeno perigo" data-apagar-momento>Apagar</button>' : '') +
+          '<button class="botao pequeno primario" data-presente>Voltar ao presente</button>';
+        var r = $('[data-restaurar]', tarja);
+        if (r) r.addEventListener('click', function () { restaurarMomento(m.id); });
+        var a = $('[data-apagar-momento]', tarja);
+        if (a) a.addEventListener('click', function () { apagarMomento(m.id); });
+        $('[data-presente]', tarja).addEventListener('click', voltarAoPresente);
+      }
+    }
+  }
+
+  /* ---------------- a névoa ----------------
+     O mapa não é onisciente: o que o grupo nunca viu fica velado como
+     terra incógnita. O mestre revela conforme viajam, e pode espiar
+     por baixo do véu para trabalhar sem revelar nada à mesa. */
+
+  function nacaoVelada(n) {
+    if (n.conhecido !== false) return false;
+    if (ehMestre() && espiandoNevoa) return false;
+    return true;
+  }
+
+  function tramaNevoa() {
+    return garantirTrama('trama-nevoa', function (id) {
+      var p = el('pattern', {
+        id: id, width: 7, height: 7, patternUnits: 'userSpaceOnUse',
+        patternTransform: 'rotate(45)', class: 'trama-guerra', 'data-passo': 7
+      });
+      p.appendChild(el('rect', { width: 7, height: 7, class: 'nevoa-fundo' }));
+      p.appendChild(el('rect', { width: 2, height: 7, class: 'nevoa-risco', 'data-faixa': 2 }));
+      return p;
+    });
+  }
+
+  /* ---------------- as cores da guerra ---------------- */
+
+  /* Território tomado é pintado com a cor do conquistador listrada sobre
+     a do dono antigo — como num mapa de estratégia: dá para ver o que
+     mudou de mão sem ler nada. Cada par de cores vira uma trama própria. */
+  function idDeTrama(prefixo, a, b) {
+    return prefixo + '-' + String(a).replace('#', '') + '-' + String(b).replace('#', '');
+  }
+
+  function garantirTrama(id, montar) {
+    if (defsGuerra.querySelector('#' + id)) return 'url(#' + id + ')';
+    defsGuerra.appendChild(montar(id));
+    return 'url(#' + id + ')';
+  }
+
+  function tramaConquista(corDono, corAntiga) {
+    return garantirTrama(idDeTrama('conq', corDono, corAntiga), function (id) {
+      var p = el('pattern', {
+        id: id, width: 9, height: 9, patternUnits: 'userSpaceOnUse',
+        patternTransform: 'rotate(45)', class: 'trama-guerra', 'data-passo': 9
+      });
+      p.appendChild(el('rect', { width: 9, height: 9, fill: corDono }));
+      p.appendChild(el('rect', { width: 3.4, height: 9, fill: corAntiga, 'data-faixa': 3.4 }));
+      return p;
+    });
+  }
+
+  function tramaRevolta(cor) {
+    return garantirTrama(idDeTrama('revolta', cor, 'x'), function (id) {
+      var p = el('pattern', {
+        id: id, width: 8, height: 8, patternUnits: 'userSpaceOnUse',
+        patternTransform: 'rotate(-45)', class: 'trama-guerra', 'data-passo': 8
+      });
+      p.appendChild(el('rect', { width: 8, height: 8, fill: cor }));
+      p.appendChild(el('rect', { width: 2.6, height: 8, fill: '#1a0d0d',
+                                 'fill-opacity': .55, 'data-faixa': 2.6 }));
+      return p;
+    });
+  }
+
+  function tramaArrasada(cor) {
+    return garantirTrama(idDeTrama('arrasado', cor, 'x'), function (id) {
+      var p = el('pattern', {
+        id: id, width: 7, height: 7, patternUnits: 'userSpaceOnUse',
+        class: 'trama-guerra', 'data-passo': 7
+      });
+      p.appendChild(el('rect', { width: 7, height: 7, fill: cor, 'fill-opacity': .5 }));
+      p.appendChild(el('circle', { cx: 3.5, cy: 3.5, r: 1.2, fill: '#20140f',
+                                   'fill-opacity': .6, 'data-faixa': 1.2 }));
+      return p;
+    });
+  }
+
+  function preenchimentoDaNacao(n) {
+    if (nacaoVelada(n)) return tramaNevoa();
+    var estado = n.estadoGuerra || 'neutro';
+    if (estado === 'conquistado' && n.controladoPor && n.controladoPor !== n.id) {
+      var dono = acharNacao(n.controladoPor);
+      if (dono) return tramaConquista(dono.cor, n.cor);
+    }
+    if (estado === 'revolta') return tramaRevolta(n.cor);
+    if (estado === 'arrasado') return tramaArrasada(n.cor);
+    return n.cor;
+  }
+
+  /* As tramas vivem em unidades do mapa, então engordariam ao aproximar.
+     Aqui elas são reescaladas para manter a mesma listra na tela. */
+  function atualizarTramas() {
+    if (!defsGuerra) return;
+    var porPixel = pixelsPorUnidade();
+    $$('.trama-guerra', defsGuerra).forEach(function (p) {
+      var passo = parseFloat(p.getAttribute('data-passo')) || 8;
+      var lado = passo / porPixel;
+      p.setAttribute('width', lado.toFixed(2));
+      p.setAttribute('height', lado.toFixed(2));
+      $$('[data-faixa]', p).forEach(function (f) {
+        var largura = parseFloat(f.getAttribute('data-faixa')) / porPixel;
+        if (f.tagName === 'circle') {
+          f.setAttribute('cx', (lado / 2).toFixed(2));
+          f.setAttribute('cy', (lado / 2).toFixed(2));
+          f.setAttribute('r', largura.toFixed(2));
+        } else {
+          f.setAttribute('width', largura.toFixed(2));
+          f.setAttribute('height', lado.toFixed(2));
+        }
+      });
+      $$('rect:not([data-faixa])', p).forEach(function (r) {
+        r.setAttribute('width', lado.toFixed(2));
+        r.setAttribute('height', lado.toFixed(2));
+      });
+    });
+  }
+
   /* ---------------- desenho ---------------- */
 
   function categoriaVisivel(c) { return !categoriasOcultas[c]; }
@@ -457,17 +824,24 @@ var MapaArton = (function () {
     camadaRotulos.textContent = '';
 
     var ordem = { mar: 0, regiao: 1, independente: 2, reinado: 3, tormenta: 4 };
-    var nacoes = dados.nacoes.slice().sort(function (a, b) {
+    var nacoes = nacoesEmCena().slice().sort(function (a, b) {
       return (ordem[a.categoria] || 2) - (ordem[b.categoria] || 2);
     });
 
+    defsGuerra.textContent = '';
     nacoes.forEach(function (n) {
       if (n.visivel === false || !categoriaVisivel(n.categoria)) return;
       if (!n.poligono || n.poligono.length < 3) return;
+      var velada = nacaoVelada(n);
+      var estado = velada ? 'neutro' : (n.estadoGuerra || 'neutro');
+      var dono = (!velada && n.controladoPor) ? acharNacao(n.controladoPor) : null;
       camadaTerritorios.appendChild(el('polygon', {
         points: n.poligono.map(function (p) { return p[0] + ',' + p[1]; }).join(' '),
-        fill: n.cor, stroke: n.cor,
-        class: 'territorio categoria-' + n.categoria +
+        fill: preenchimentoDaNacao(n),
+        stroke: velada ? 'none' : ((estado === 'conquistado' && dono) ? dono.cor : n.cor),
+        class: 'territorio categoria-' + n.categoria + ' guerra-' + estado +
+               (velada ? ' velado' : '') +
+               (n.conhecido === false && !velada ? ' espiado' : '') +
                (selecao && selecao.tipo === 'nacao' && selecao.id === n.id ? ' selecionado' : ''),
         'data-id': n.id
       }));
@@ -476,15 +850,21 @@ var MapaArton = (function () {
     if (mostrarRotulos) {
       nacoes.forEach(function (n) {
         if (n.visivel === false || !categoriaVisivel(n.categoria) || !n.rotulo) return;
-        var t = el('text', { x: n.rotulo.x, y: n.rotulo.y, class: 'rotulo-nacao', 'font-size': 10.5 });
-        t.textContent = n.nome;
+        var velada = nacaoVelada(n);
+        var t = el('text', {
+          x: n.rotulo.x, y: n.rotulo.y, 'font-size': 10.5,
+          class: 'rotulo-nacao' + (velada ? ' rotulo-velado' : '')
+        });
+        t.textContent = velada ? 'Terra incógnita' : n.nome;
         camadaRotulos.appendChild(t);
       });
     }
 
-    dados.cidades.forEach(function (c) {
+    var cidadesEmCena = vendoOPassado() ? [] : dados.cidades;
+    cidadesEmCena.forEach(function (c) {
       var n = acharNacao(c.nacao);
       if (n && (n.visivel === false || !categoriaVisivel(n.categoria))) return;
+      if (n && nacaoVelada(n)) return;
       var tipo = TIPOS[c.tipo] || TIPOS.cidade;
       if (c.campanha) {
         camadaCidades.appendChild(el('circle', {
@@ -507,6 +887,7 @@ var MapaArton = (function () {
     desenharTokens();
     desenharEdicao();
     atualizarTamanhos();
+    atualizarTramas();
   }
 
   /* ---------------- heróis no mapa ---------------- */
@@ -516,6 +897,7 @@ var MapaArton = (function () {
     camadaTokens.textContent = '';
     defsTokens.textContent = '';
 
+    if (vendoOPassado()) return;   // os heróis estão no presente
     (dados.tokens || []).forEach(function (t) {
       if (t.visivel === false || t.x === null || t.x === undefined) return;
       var escolhido = selecao && selecao.tipo === 'token' && selecao.id === t.id;
@@ -587,7 +969,7 @@ var MapaArton = (function () {
     var caixa = $('#tira-tokens');
     if (!caixa) return;
     caixa.textContent = '';
-    var mestre = ehMestre();
+    var mestre = podeEditar();
 
     (dados.tokens || []).forEach(function (t) {
       var posto = t.x !== null && t.x !== undefined;
@@ -1036,6 +1418,7 @@ var MapaArton = (function () {
     renderInspetor();
     renderLista();
     renderTira();
+    if (selecao) mostrarFichaNoCelular();
 
     if (!voar || !selecao) return;
     if (tipo === 'token') {
@@ -1083,7 +1466,7 @@ var MapaArton = (function () {
     caixa.textContent = '';
 
     var grupos = {};
-    dados.nacoes.forEach(function (n) {
+    nacoesEmCena().forEach(function (n) {
       if (!categoriaVisivel(n.categoria)) return;
       (grupos[n.categoria] = grupos[n.categoria] || []).push(n);
     });
@@ -1127,13 +1510,50 @@ var MapaArton = (function () {
 
     var pastilha = document.createElement('span');
     pastilha.className = 'pastilha';
-    pastilha.style.background = nacao.cor;
-    cabeca.appendChild(pastilha);
+    var quemManda = (!nacaoVelada(nacao) && nacao.estadoGuerra === 'conquistado' && nacao.controladoPor)
+      ? acharNacao(nacao.controladoPor) : null;
+    if (quemManda) {
+      // metade da cor de quem tomou, metade da cor de quem perdeu
+      pastilha.style.background =
+        'linear-gradient(135deg, ' + quemManda.cor + ' 0 55%, ' + nacao.cor + ' 55% 100%)';
+    } else if (nacaoVelada(nacao)) {
+      pastilha.style.background = 'var(--borda-forte)';
+    } else {
+      pastilha.style.background = nacao.cor;
+    }
 
+    if (nacao.brasao && !nacaoVelada(nacao) && typeof Heraldica !== 'undefined') {
+      var mini = document.createElement('span');
+      mini.className = 'brasao-mini';
+      mini.appendChild(Heraldica.escudo(nacao.brasao, { cor: nacao.cor, nome: nacao.nome }));
+      cabeca.appendChild(mini);
+    } else {
+      cabeca.appendChild(pastilha);
+    }
+
+    var velada = nacaoVelada(nacao);
     var nome = document.createElement('span');
-    nome.className = 'nome';
-    nome.textContent = nacao.nome;
+    nome.className = 'nome' + (velada ? ' nome-velado' : '');
+    nome.textContent = velada ? 'Terra incógnita' : nacao.nome;
     cabeca.appendChild(nome);
+
+    if (nacao.conhecido === false && !velada) {
+      var olhoEspiado = document.createElement('span');
+      olhoEspiado.className = 'selo-guerra';
+      olhoEspiado.textContent = '🌫️';
+      olhoEspiado.title = 'Velado para a mesa — você está espiando';
+      cabeca.appendChild(olhoEspiado);
+    }
+
+    var estado = velada ? 'neutro' : (nacao.estadoGuerra || 'neutro');
+    if (estado !== 'neutro') {
+      var selo = document.createElement('span');
+      selo.className = 'selo-guerra selo-' + estado;
+      selo.textContent = GUERRA[estado].icone;
+      var dono = nacao.controladoPor ? acharNacao(nacao.controladoPor) : null;
+      selo.title = GUERRA[estado].rotulo + (dono ? ' — sob domínio de ' + dono.nome : '');
+      cabeca.appendChild(selo);
+    }
 
     if (cidades.length) {
       var cont = document.createElement('span');
@@ -1211,7 +1631,7 @@ var MapaArton = (function () {
         '<dt>Posição</dt><dd>' + t.x.toFixed(1) + ' , ' + t.y.toFixed(1) + '</dd>' +
       '</dl>';
 
-    if (ehMestre()) {
+    if (podeEditar()) {
       html += '<div class="secao"><h4>Este herói</h4>' +
         '<div class="aviso-edicao">Arraste o retrato para mostrar onde o grupo está. ' +
         'Puxe o alfinete na quina para mudar o tamanho.</div>' +
@@ -1261,16 +1681,25 @@ var MapaArton = (function () {
 
   function renderInspetorNacao(caixa, nacao) {
     if (!nacao) { caixa.innerHTML = ''; return; }
-    var mestre = ehMestre();
+    if (nacaoVelada(nacao)) {
+      caixa.innerHTML = '<div class="inspetor-topo">' +
+        '<span class="pastilha-grande" style="background:var(--borda-forte)"></span>' +
+        '<div><h2>Terra incógnita</h2><div class="sub">ninguém do grupo esteve aqui</div></div></div>' +
+        '<div class="texto-notas">Os mapas do Reinado não dizem nada sobre estas terras. ' +
+        'Quem sabe alguém na estrada saiba contar.</div>';
+      return;
+    }
+    var mestre = podeEditar();
     var cidades = cidadesDe(nacao.id);
     var capital = nacao.capital ? acharCidade(nacao.capital) : null;
 
     var html =
       '<div class="inspetor-topo">' +
-        '<span class="pastilha-grande" style="background:' + esc(nacao.cor) + '"></span>' +
+        '<span class="lugar-brasao" data-brasao-ficha></span>' +
         '<div><h2>' + esc(nacao.nome) + '</h2>' +
         (nacao.nomeOficial ? '<div class="sub">' + esc(nacao.nomeOficial) + '</div>' : '') +
         '</div></div>' +
+      (estadoDeGuerraEmTexto(nacao) || '') +
       '<dl class="ficha">' +
         (capital ? '<dt>Capital</dt><dd>' + esc(capital.nome) + '</dd>' : '') +
         (nacao.governo && nacao.governo !== '—' ? '<dt>Governo</dt><dd>' + esc(nacao.governo) + '</dd>' : '') +
@@ -1306,6 +1735,39 @@ var MapaArton = (function () {
         '<label class="campo"><span>Notas</span><textarea data-editar="notas" rows="5">' + esc(nacao.notas || '') + '</textarea></label>' +
         '</div>' +
 
+        '<div class="secao"><h4>Névoa</h4>' +
+        '<label style="display:flex;align-items:center;gap:8px;font-size:13px;margin:2px 0 8px">' +
+          '<input type="checkbox" data-conhecido ' + (nacao.conhecido !== false ? 'checked' : '') + '>' +
+          '<span>O grupo conhece esta terra</span></label>' +
+        '<div class="aviso-edicao">Desmarcado, o território vira <b>terra incógnita</b> para a mesa: ' +
+        'sem nome, sem cor, sem cidades. Use 🌫️ na barra de ferramentas para espiar por baixo ' +
+        'sem revelar nada.</div>' +
+        '</div>' +
+
+        '<div class="secao"><h4>Estado de guerra</h4>' +
+        '<div class="linha-campos">' +
+          '<label class="campo"><span>Situação</span><select data-editar="estadoGuerra">' +
+            Object.keys(GUERRA).sort(function (a, b) { return GUERRA[a].ordem - GUERRA[b].ordem; })
+              .map(function (k) {
+                return '<option value="' + k + '"' +
+                  ((nacao.estadoGuerra || 'neutro') === k ? ' selected' : '') + '>' +
+                  GUERRA[k].icone + ' ' + esc(GUERRA[k].rotulo) + '</option>';
+              }).join('') + '</select></label>' +
+          '<label class="campo"><span>Sob domínio de</span><select data-editar="controladoPor">' +
+            '<option value="">— ninguém —</option>' +
+            dados.nacoes.filter(function (o) {
+              return o.id !== nacao.id && o.categoria !== 'mar' && o.categoria !== 'tormenta';
+            }).sort(function (a, b) { return a.nome.localeCompare(b.nome, 'pt-BR'); })
+              .map(function (o) {
+                return '<option value="' + esc(o.id) + '"' +
+                  (nacao.controladoPor === o.id ? ' selected' : '') + '>' + esc(o.nome) + '</option>';
+              }).join('') + '</select></label>' +
+        '</div>' +
+        '<div class="aviso-edicao">Marque <b>Conquistado</b> e escolha quem tomou a terra: ' +
+        'o território passa a ser pintado com as cores do conquistador listradas sobre as ' +
+        'do dono antigo.</div>' +
+        '</div>' +
+
         '<div class="secao"><h4>Expansão e fronteiras</h4>' +
         '<div class="aviso-edicao">Ligue o contorno para arrastar os pontos da fronteira. Clique nos pontos claros entre dois vértices para criar um novo; Alt + clique remove.</div>' +
         '<div class="grupo-botoes">' +
@@ -1320,8 +1782,21 @@ var MapaArton = (function () {
         '</div></div>';
     }
 
+    if (nacao.brasao) {
+      html += '<div class="secao"><h4>Brasão</h4>' +
+        '<p class="texto-brasao">' + esc(nacao.brasao) + '</p></div>';
+    }
+
     if (cidades.length) html += '<div class="secao"><h4>Locais</h4><div id="mapa-mini"></div></div>';
     caixa.innerHTML = html;
+
+    // o escudo é desenhado a partir da descrição heráldica do Atlas
+    var lugar = $('[data-brasao-ficha]', caixa);
+    if (lugar && typeof Heraldica !== 'undefined') {
+      lugar.appendChild(Heraldica.escudo(nacao.brasao, { cor: nacao.cor, nome: nacao.nome }));
+    } else if (lugar) {
+      lugar.style.background = nacao.cor;
+    }
 
     if (cidades.length) {
       var mini = $('#mapa-mini', caixa);
@@ -1341,6 +1816,20 @@ var MapaArton = (function () {
     if (mestre) ligarEdicaoNacao(caixa, nacao);
   }
 
+  /* Uma tarja no alto da ficha quando a terra não está em paz. */
+  function estadoDeGuerraEmTexto(nacao) {
+    var estado = nacao.estadoGuerra || 'neutro';
+    if (estado === 'neutro') return '';
+    var info = GUERRA[estado] || GUERRA.neutro;
+    var dono = nacao.controladoPor ? acharNacao(nacao.controladoPor) : null;
+    return '<div class="tarja-guerra tarja-' + estado + '">' +
+      '<span class="brasao-estado">' + info.icone + '</span>' +
+      '<span><b>' + esc(info.rotulo) + '</b>' +
+      (estado === 'conquistado' && dono
+        ? '<br>sob domínio de ' + esc(dono.nome)
+        : '') + '</span></div>';
+  }
+
   function ligarEdicaoNacao(caixa, nacao) {
     $$('[data-editar]', caixa).forEach(function (campo) {
       var evento = campo.tagName === 'SELECT' || campo.type === 'color' ? 'change' : 'input';
@@ -1350,6 +1839,15 @@ var MapaArton = (function () {
         salvar(); desenhar(); renderLista();
         if (chave === 'categoria') { renderFiltros(); renderInspetor(); }
       });
+    });
+
+    var marcaConhecido = $('[data-conhecido]', caixa);
+    if (marcaConhecido) marcaConhecido.addEventListener('change', function () {
+      nacao.conhecido = marcaConhecido.checked;
+      salvar(); desenhar(); renderLista();
+      Interface.avisar(nacao.conhecido
+        ? nacao.nome + ' foi revelado à mesa.'
+        : nacao.nome + ' sumiu do mapa dos jogadores.');
     });
 
     var acoes = {
@@ -1387,7 +1885,7 @@ var MapaArton = (function () {
 
   function renderInspetorCidade(caixa, cidade) {
     if (!cidade) { caixa.innerHTML = ''; return; }
-    var mestre = ehMestre();
+    var mestre = podeEditar();
     var tipo = TIPOS[cidade.tipo] || TIPOS.cidade;
     var nacao = acharNacao(cidade.nacao);
 
@@ -1462,6 +1960,40 @@ var MapaArton = (function () {
 
   /* ---------------- interação ---------------- */
 
+  /* No celular não existe roda do mouse. Dois dedos aproximam e afastam,
+     mantendo fixo o ponto no meio deles — é o gesto que todo mundo espera
+     de um mapa. */
+  function distanciaEntreDedos() {
+    var ids = Object.keys(dedos);
+    if (ids.length < 2) return null;
+    var a = dedos[ids[0]], b = dedos[ids[1]];
+    return {
+      distancia: Math.sqrt(Math.pow(b.x - a.x, 2) + Math.pow(b.y - a.y, 2)),
+      meio: { clientX: (a.x + b.x) / 2, clientY: (a.y + b.y) / 2 }
+    };
+  }
+
+  function comecarPinca() {
+    var medida = distanciaEntreDedos();
+    if (!medida || medida.distancia < 8) return;
+    // a pinça manda: cancela qualquer arrasto de um dedo só
+    arrasto = null;
+    svg.classList.remove('arrastando');
+    pinca = { distancia: medida.distancia, largura: vista.w };
+  }
+
+  function seguirPinca() {
+    var medida = distanciaEntreDedos();
+    if (!pinca || !medida || medida.distancia < 8) return;
+    var antes = coordenadas(medida.meio);
+    vista.w = pinca.largura * (pinca.distancia / medida.distancia);
+    aplicarVista();
+    var depois = coordenadas(medida.meio);
+    vista.x += antes[0] - depois[0];
+    vista.y += antes[1] - depois[1];
+    aplicarVista();
+  }
+
   function ligarSvg() {
     svg.addEventListener('wheel', function (e) {
       e.preventDefault();
@@ -1476,17 +2008,20 @@ var MapaArton = (function () {
 
     svg.addEventListener('pointerdown', function (e) {
       if (e.button !== 0) return;
+      dedos[e.pointerId] = { x: e.clientX, y: e.clientY };
+      if (Object.keys(dedos).length === 2) { comecarPinca(); return; }
+      if (pinca) return;
       var alvo = e.target, ponto = coordenadas(e);
 
-      if (ferramenta === 'territorio' && ehMestre()) { rascunho.push(ponto); desenharEdicao(); return; }
-      if (ferramenta === 'cidade' && ehMestre()) { criarCidade(ponto); return; }
+      if (ferramenta === 'territorio' && podeEditar()) { rascunho.push(ponto); desenharEdicao(); return; }
+      if (ferramenta === 'cidade' && podeEditar()) { criarCidade(ponto); return; }
       if (ferramenta === 'regua') {
         if (regua.length >= 2) regua = [];
         regua.push(ponto); desenharEdicao(); return;
       }
 
       // --- alça de tamanho do herói ---
-      if (alvo.hasAttribute && alvo.hasAttribute('data-punho') && ehMestre()) {
+      if (alvo.hasAttribute && alvo.hasAttribute('data-punho') && podeEditar()) {
         arrasto = { tipo: 'tamanho', token: acharToken(alvo.getAttribute('data-punho')), moveu: false };
         capturarPonteiro(e.pointerId);
         return;
@@ -1496,7 +2031,7 @@ var MapaArton = (function () {
       if (alvo.hasAttribute && alvo.hasAttribute('data-token')) {
         var idt = alvo.getAttribute('data-token');
         selecionar('token', idt, false);
-        if (ehMestre()) {
+        if (podeEditar()) {
           arrasto = { tipo: 'token', token: acharToken(idt), moveu: false };
           capturarPonteiro(e.pointerId);
         }
@@ -1529,7 +2064,7 @@ var MapaArton = (function () {
       if (alvo.classList.contains('marca-cidade')) {
         var id = alvo.getAttribute('data-id');
         selecionar('cidade', id, false);
-        if (ehMestre()) {
+        if (podeEditar()) {
           arrasto = { tipo: 'cidade', cidade: acharCidade(id), moveu: false };
           capturarPonteiro(e.pointerId);
         }
@@ -1539,26 +2074,42 @@ var MapaArton = (function () {
       if (alvo.classList.contains('territorio')) {
         var idn = alvo.getAttribute('data-id');
         if (selecao && selecao.tipo === 'nacao' && selecao.id === idn &&
-            editandoVertices && ehMestre()) {
+            editandoVertices && podeEditar()) {
           arrasto = { tipo: 'territorio', nacao: acharNacao(idn), anterior: ponto, moveu: false };
           capturarPonteiro(e.pointerId);
           return;
         }
-        selecionar('nacao', idn, false);
+        /* No celular quase toda a tela é território: se o toque numa
+           terra já selecionasse, não haveria de onde arrastar o mapa.
+           Então o gesto fica em suspenso — andou o dedo, é arrasto;
+           soltou parado, é seleção. */
+        arrasto = {
+          tipo: 'vista', anterior: ponto, moveu: false,
+          inicio: { x: e.clientX, y: e.clientY }, talvezSelecione: idn
+        };
+        svg.classList.add('arrastando');
+        capturarPonteiro(e.pointerId);
         return;
       }
 
-      arrasto = { tipo: 'vista', anterior: ponto, moveu: false };
+      arrasto = { tipo: 'vista', anterior: ponto, moveu: false, inicio: { x: e.clientX, y: e.clientY } };
       svg.classList.add('arrastando');
       capturarPonteiro(e.pointerId);
     });
 
     svg.addEventListener('pointermove', function (e) {
+      if (dedos[e.pointerId]) { dedos[e.pointerId].x = e.clientX; dedos[e.pointerId].y = e.clientY; }
+      if (pinca) { seguirPinca(); return; }
       if (ferramenta === 'selecionar' && !arrasto) mostrarDica(e);
       if (!arrasto) return;
       var ponto = coordenadas(e);
 
       if (arrasto.tipo === 'vista') {
+        if (arrasto.inicio && !arrasto.moveu) {
+          var andou = Math.abs(e.clientX - arrasto.inicio.x) +
+                      Math.abs(e.clientY - arrasto.inicio.y);
+          if (andou < 6) return;      // ainda pode ser um toque, não um arrasto
+        }
         vista.x += arrasto.anterior[0] - ponto[0];
         vista.y += arrasto.anterior[1] - ponto[1];
         aplicarVista();
@@ -1593,6 +2144,11 @@ var MapaArton = (function () {
     });
 
     function fim(e) {
+      delete dedos[e.pointerId];
+      if (pinca && Object.keys(dedos).length < 2) {
+        pinca = null;
+        return;   // largar um dedo encerra a pinça, não vira arrasto
+      }
       if (!arrasto) return;
       svg.classList.remove('arrastando');
       try { svg.releasePointerCapture(e.pointerId); } catch (err) { /* ok */ }
@@ -1601,7 +2157,9 @@ var MapaArton = (function () {
         if (arrasto.tipo === 'cidade' || arrasto.tipo === 'token' ||
             arrasto.tipo === 'tamanho') renderInspetor();
       }
+      var aSelecionar = (!arrasto.moveu && arrasto.talvezSelecione) ? arrasto.talvezSelecione : null;
       arrasto = null;
+      if (aSelecionar) selecionar('nacao', aSelecionar, false);
     }
     svg.addEventListener('pointerup', fim);
     svg.addEventListener('pointercancel', fim);
@@ -1722,7 +2280,7 @@ var MapaArton = (function () {
   /* ---------------- ferramentas ---------------- */
 
   function definirFerramenta(nova) {
-    if ((nova === 'territorio' || nova === 'cidade') && !ehMestre()) return;
+    if ((nova === 'territorio' || nova === 'cidade') && !podeEditar()) return;
     ferramenta = nova;
     if (nova !== 'territorio') rascunho = [];
     if (nova !== 'regua') regua = [];
@@ -1747,6 +2305,16 @@ var MapaArton = (function () {
       rot.classList.toggle('ativa', mostrarRotulos);
       desenhar();
     });
+    var espiar = $('#mapa-espiar');
+    if (espiar) espiar.addEventListener('click', function () {
+      espiandoNevoa = !espiandoNevoa;
+      espiar.classList.toggle('ativa', espiandoNevoa);
+      desenhar(); renderLista();
+      Interface.avisar(espiandoNevoa
+        ? 'Você está vendo através da névoa. A mesa continua sem enxergar.'
+        : 'Névoa de volta no lugar.');
+    });
+
     var enq = $('#mapa-enquadrar');
     if (enq) enq.addEventListener('click', enquadrar);
     var mais = $('#mapa-mais'), menos = $('#mapa-menos');
@@ -1857,15 +2425,49 @@ var MapaArton = (function () {
 
   /* ---------------- dados ---------------- */
 
+  /* Campos que o código conhece e o estado salvo pode não ter. Sempre que
+     um dado novo entra em dados-mapa.js (foi o caso do brasão), quem já
+     tinha um mundo salvo ficaria sem ele, porque o estado do servidor
+     substitui os dados inteiros. Aqui os campos ausentes são preenchidos
+     a partir do padrão sem tocar no que o mestre já escreveu: só entra o
+     que falta, nunca o que existe. */
+  function completarComOPadrao(mapa) {
+    var padrao = DadosMapa.padrao();
+
+    function completar(lista, base) {
+      var porId = {};
+      base.forEach(function (o) { porId[o.id] = o; });
+      lista.forEach(function (salvo) {
+        var molde = porId[salvo.id];
+        if (!molde) return;
+        Object.keys(molde).forEach(function (campo) {
+          if (!(campo in salvo)) salvo[campo] = molde[campo];
+        });
+      });
+    }
+
+    completar(mapa.nacoes, padrao.nacoes);
+    completar(mapa.cidades, padrao.cidades);
+  }
+
   function adotar(remoto) {
     if (!remoto || !remoto.nacoes || !remoto.cidades) return false;
     dados = remoto;
+    completarComOPadrao(dados);
     dados.cidades.forEach(function (c) { if (c.campanha === undefined) c.campanha = false; });
     // estados gravados antes de os tokens existirem
     if (!Array.isArray(dados.tokens) || !dados.tokens.length) {
       dados.tokens = DadosMapa.tokensPadrao();
     }
     dados.tokens.forEach(function (t) { if (!t.tamanho) t.tamanho = 1; });
+    // estados salvos antes da guerra e da crônica existirem
+    dados.nacoes.forEach(function (n) {
+      if (!n.estadoGuerra) n.estadoGuerra = 'neutro';
+      if (n.controladoPor === undefined) n.controladoPor = null;
+      if (n.conhecido === undefined) n.conhecido = true;
+    });
+    if (!Array.isArray(dados.cronica)) dados.cronica = [];
+    if (momentoVisto && !acharMomento(momentoVisto)) momentoVisto = null;
     return true;
   }
 
@@ -1888,6 +2490,7 @@ var MapaArton = (function () {
     else if (k === 't') definirFerramenta('territorio');
     else if (k === 'c') definirFerramenta('cidade');
     else if (k === 'l') { var b = $('#mapa-rotulos'); if (b) b.click(); }
+    else if (k === 'n') { var e = $('#mapa-espiar'); if (e && ehMestre()) e.click(); }
     else if (k === '0') enquadrar();
     else if (e.key === 'Enter' && ferramenta === 'territorio') concluirTerritorio();
   });
@@ -1904,11 +2507,12 @@ var MapaArton = (function () {
     renderLista();
     renderTira();
     renderInspetor();
+    renderCronica();
     requestAnimationFrame(enquadrar);
 
     Sincronia.aoMudar('mapa', function (remoto) {
       if (adotar(remoto)) {
-        desenhar(); renderLista(); renderTira(); renderInspetor();
+        desenhar(); renderLista(); renderTira(); renderInspetor(); renderCronica();
         Interface.avisar('O mestre alterou o mapa.');
       }
     });
@@ -1918,13 +2522,17 @@ var MapaArton = (function () {
         editandoVertices = false;
         if (ferramenta === 'territorio' || ferramenta === 'cidade') definirFerramenta('selecionar');
       }
-      renderInspetor(); renderTira(); desenharEdicao();
+      renderInspetor(); renderTira(); renderCronica(); desenharEdicao();
     });
   }
 
   return {
     iniciar: iniciar,
     enquadrar: enquadrar,
-    selecionar: selecionar
+    selecionar: selecionar,
+    registrarMomento: registrarMomento,
+    verMomento: verMomento,
+    voltarAoPresente: voltarAoPresente,
+    vendoOPassado: vendoOPassado
   };
 })();

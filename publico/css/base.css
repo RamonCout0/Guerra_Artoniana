@@ -409,3 +409,239 @@ input[type="checkbox"] { accent-color: var(--realce); }
 @media (prefers-reduced-motion: reduce) {
   * { transition-duration: 1ms !important; animation-duration: 1ms !important; }
 }
+
+/* ---------- Quem é você (identidade de jogador) ---------- */
+
+.quem-sou {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 11px 3px 4px;
+  border-radius: 999px;
+  border: 1px solid var(--borda);
+  background: var(--fundo-painel-2);
+  color: var(--tinta-suave);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 150ms, color 150ms;
+}
+
+.quem-sou:hover { border-color: var(--realce); color: var(--tinta); }
+.quem-sou[hidden] { display: none; }
+
+.quem-sou .retrato-mini {
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  border: 2px solid var(--realce);
+  background-size: cover;
+  background-position: center;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  font-family: var(--fonte-titulo);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, .5);
+}
+
+.quem-sou .retrato-mini.vazio {
+  background: var(--fundo-campo);
+  border-style: dashed;
+  border-color: var(--borda-forte);
+  color: var(--tinta-fraca);
+  text-shadow: none;
+}
+
+/* ---------- Escolha de herói ---------- */
+
+.escolha-herois {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  gap: 10px;
+}
+
+.cartao-heroi {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 8px;
+  border-radius: var(--raio);
+  border: 1px solid var(--borda);
+  background: var(--fundo-painel-2);
+  cursor: pointer;
+  font: inherit;
+  color: var(--tinta-suave);
+  transition: border-color 150ms, transform 120ms;
+}
+
+.cartao-heroi:hover { border-color: var(--realce); transform: translateY(-2px); }
+.cartao-heroi.escolhido { border-color: var(--realce); border-width: 2px; color: var(--tinta); }
+
+.retrato-medio {
+  width: 54px; height: 54px;
+  border-radius: 50%;
+  border: 2px solid var(--realce);
+  background-size: cover;
+  background-position: center;
+  display: grid;
+  place-items: center;
+  font-family: var(--fonte-titulo);
+  font-size: 22px;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, .5);
+}
+
+.retrato-medio.vazio {
+  background: var(--fundo-campo);
+  border-style: dashed;
+  border-color: var(--borda-forte);
+  color: var(--tinta-fraca);
+  text-shadow: none;
+  font-size: 20px;
+}
+
+.nome-heroi {
+  font-size: 12px;
+  text-align: center;
+  line-height: 1.3;
+  word-break: break-word;
+}
+
+/* =============================================================
+   A PORTA — mesa fechada, senha na entrada
+   ============================================================= */
+
+.portao {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background:
+    radial-gradient(60% 45% at 50% 0%, rgba(210, 40, 51, .22), transparent 65%),
+    var(--fundo);
+}
+
+.portao[hidden] { display: none; }
+
+.portao-caixa {
+  width: 100%;
+  max-width: 380px;
+  text-align: center;
+  background: var(--fundo-painel);
+  border: 1px solid var(--borda-forte);
+  border-top: 3px solid var(--realce);
+  border-radius: var(--raio);
+  box-shadow: var(--sombra-forte);
+  padding: 30px 26px 24px;
+}
+
+.portao-selo { font-size: 34px; line-height: 1; margin-bottom: 10px; }
+
+.portao-caixa h1 {
+  font-size: clamp(22px, 6vw, 28px);
+  line-height: 1.1;
+  margin-bottom: 6px;
+}
+
+.portao-sub {
+  font-size: 11px;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--realce);
+  margin: 0 0 18px;
+  font-weight: 600;
+}
+
+.portao-texto {
+  font-size: 13.5px;
+  line-height: 1.65;
+  color: var(--tinta-suave);
+  margin: 0 0 20px;
+}
+
+.portao-caixa label.campo { text-align: left; }
+.portao-caixa input { font-size: 16px; padding: 11px 12px; }
+
+.portao-botao {
+  width: 100%;
+  justify-content: center;
+  padding: 12px;
+  font-size: 15px;
+  margin-top: 4px;
+}
+
+.portao-rodape {
+  font-size: 11.5px;
+  color: var(--tinta-fraca);
+  margin: 16px 0 0;
+  line-height: 1.5;
+}
+
+/* Enquanto a porta está fechada, nada do mundo aparece atrás. */
+body.trancado .barra,
+body.trancado .area-mapa,
+body.trancado .janela-calendario { visibility: hidden; }
+
+/* =============================================================
+   CELULAR — barra do topo e modais
+   ============================================================= */
+
+@media (max-width: 820px), (pointer: coarse) and (max-width: 1000px) {
+
+  :root { --barra-altura: 52px; }
+
+  .barra { gap: 8px; padding: 0 10px; overflow: hidden; }
+  .barra .marca { font-size: 14px; }
+  .barra .marca small { display: none; }
+
+  /* A busca vira um campo curto; o resto do espaço é do mapa. */
+  /* A busca precisa de largura real para servir; então os outros itens
+     da barra encolhem para caber, virando só ícone. */
+  .barra .caixa-busca { width: auto !important; flex: 1 1 auto; min-width: 110px; margin-left: 0 !important; }
+  .barra .caixa-busca input { font-size: 16px; }   /* 16px evita o zoom automático do iOS */
+
+  /* "Entrar como mestre" vira um selo. */
+  #botao-sessao { font-size: 0; padding: 8px 10px; }
+  #botao-sessao::before { content: "⚜"; font-size: 15px; }
+
+  #abrir-calendario { padding: 7px 10px; }
+  #abrir-calendario #resumo-data { display: none; }
+
+  .emblema { display: none; }
+  .fase-dia { padding: 5px 8px; }
+  .fase-dia .discreto { display: none; }
+  .quem-sou { padding: 4px 7px; }
+  .quem-sou .quem-nome { display: none; }
+
+  /* Modais viram folhas que sobem de baixo, com alvos maiores. */
+  .fundo-modal { padding: 0; align-items: flex-end; }
+
+  .modal {
+    max-width: none;
+    max-height: 92vh;
+    border-radius: var(--raio) var(--raio) 0 0;
+    padding: 20px 18px calc(18px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .modal input, .modal select, .modal textarea { font-size: 16px; padding: 10px 11px; }
+  .modal .rodape { position: sticky; bottom: 0; background: var(--fundo-painel); padding-top: 12px; }
+  .modal .rodape .botao { padding: 11px 14px; font-size: 14px; }
+
+  .aviso { left: 10px; right: 10px; transform: translateY(12px); max-width: none; }
+  .aviso.visivel { transform: translateY(0); }
+
+  .portao-caixa { padding: 26px 20px 20px; }
+}
+
+/* Telas bem estreitas: o essencial. */
+@media (max-width: 400px) {
+  .barra .marca { font-size: 0; }
+  .barra .marca::before { content: "⚔️"; font-size: 18px; }
+}

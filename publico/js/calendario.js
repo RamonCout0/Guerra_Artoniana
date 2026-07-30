@@ -255,7 +255,8 @@ var CalendarioJanela = (function () {
   function celulaDia(data) {
     var celula = document.createElement('div');
     var eventos = C.eventosDoDia(data);
-    var nota = estado.notas[chaveNota(data)];
+    var vozes = entradasDoDia(chaveNota(data));
+    var nota = vozes.length ? vozes[0].texto : null;
 
     celula.className = 'dia' +
       (data.nimb ? ' nimb' : '') +
@@ -285,9 +286,11 @@ var CalendarioJanela = (function () {
     }
     celula.appendChild(fitas);
 
-    if (nota) {
+    if (vozes.length) {
       var marca = document.createElement('span');
       marca.className = 'marca-nota';
+      if (vozes.length > 1) marca.textContent = vozes.length;
+      marca.title = vozes.length + (vozes.length === 1 ? ' entrada' : ' entradas') + ' no diário';
       celula.appendChild(marca);
     }
 
@@ -346,18 +349,58 @@ var CalendarioJanela = (function () {
         esc(mes.significado) + '</p></div>';
     }
 
+    var entradas = entradasDoDia(chave);
+    var eu = Interface.quemEuSou();
+    var mestre = ehMestre();
+
     html += '<div class="anotacao" style="margin-top:16px">' +
       '<div class="painel-titulo" style="padding:0 0 6px">Diário de campanha</div>';
 
-    if (ehMestre()) {
-      html += '<textarea id="campo-nota" placeholder="O que aconteceu neste dia…">' +
-        esc(nota) + '</textarea>' +
-        '<div class="discreto" style="margin-top:5px">Salva sozinho. Os jogadores leem o que você escrever aqui.</div>';
-    } else if (nota) {
-      html += '<div class="texto-notas" style="white-space:pre-wrap;font-size:13px;line-height:1.6;color:var(--tinta-suave)">' +
-        esc(nota) + '</div>';
+    if (entradas.length) {
+      entradas.forEach(function (e) {
+        var heroi = e.autor === 'mestre' ? null : Interface.heroiPorId(e.autor);
+        var cor = heroi ? heroi.cor : 'var(--realce)';
+        html += '<div class="entrada-diario' + (e.autor === 'mestre' ? ' do-mestre' : '') + '">' +
+          '<div class="entrada-quem">' +
+            '<span class="retrato-mini" style="border-color:' + esc(cor) + ';' +
+              (heroi && heroi.foto
+                ? 'background-image:url(&quot;' + esc(heroi.foto) + '&quot;)'
+                : 'background:' + esc(cor)) + '">' +
+              (heroi && heroi.foto ? '' :
+                (e.autor === 'mestre' ? '⚜' : esc(nomeDoAutor(e.autor).charAt(0).toUpperCase()))) +
+            '</span>' +
+            '<b>' + esc(nomeDoAutor(e.autor)) + '</b>' +
+            (mestre && e.autor !== 'mestre'
+              ? '<button class="botao pequeno fantasma apagar-entrada" data-apagar-autor="' +
+                esc(e.autor) + '" title="Apagar esta entrada">✕</button>'
+              : '') +
+          '</div>' +
+          '<div class="entrada-texto">' + esc(e.texto) + '</div>' +
+        '</div>';
+      });
+    }
+
+    if (eu) {
+      var meuTexto = (estado.notas[chave] && estado.notas[chave][eu]) || '';
+      var souHeroi = eu !== 'mestre';
+      var quem = souHeroi ? (Interface.heroiPorId(eu) || {}).nome : 'o mestre';
+      html += '<div class="escrever-diario">' +
+        '<label class="campo" style="margin:10px 0 4px"><span>' +
+          (souHeroi ? 'Escrevendo como ' + esc(quem) : 'Escrevendo como mestre') +
+        '</span>' +
+        '<textarea id="campo-nota" placeholder="' +
+          (souHeroi ? 'O que seu personagem viveu neste dia…' : 'O que aconteceu neste dia…') +
+        '">' + esc(meuTexto) + '</textarea></label>' +
+        '<div class="discreto">Salva sozinho. A mesa inteira lê o que você escrever.</div>' +
+        '</div>';
+    } else if (!entradas.length) {
+      html += '<div class="aviso-leitura">Nada anotado neste dia ainda.<br>' +
+        '<button class="botao pequeno" id="virar-heroi" style="margin-top:8px">' +
+        'Dizer quem eu sou para escrever</button></div>';
     } else {
-      html += '<div class="aviso-leitura">Nada anotado neste dia ainda.</div>';
+      html += '<div class="aviso-leitura">' +
+        '<button class="botao pequeno" id="virar-heroi">Dizer quem eu sou para escrever</button>' +
+        '</div>';
     }
     html += '</div>';
 
@@ -370,13 +413,30 @@ var CalendarioJanela = (function () {
         if (atraso) clearTimeout(atraso);
         atraso = setTimeout(function () {
           var texto = campo.value.trim();
-          if (texto) estado.notas[chave] = texto;
-          else delete estado.notas[chave];
-          salvar();
+          if (!estado.notas[chave]) estado.notas[chave] = {};
+          if (texto) estado.notas[chave][eu] = texto;
+          else delete estado.notas[chave][eu];
+          if (!Object.keys(estado.notas[chave]).length) delete estado.notas[chave];
+          Sincronia.salvarEntradaDiario(chave, eu, texto)
+            .catch(function (err) { Interface.avisar(err.message, 'erro'); });
           renderGrade();
-        }, 500);
+        }, 600);
       });
     }
+
+    var virar = $('#virar-heroi', caixa);
+    if (virar) virar.addEventListener('click', Interface.abrirEscolhaDeHeroi);
+
+    $$('[data-apagar-autor]', caixa).forEach(function (b) {
+      b.addEventListener('click', function () {
+        var autor = b.getAttribute('data-apagar-autor');
+        if (!confirm('Apagar a entrada de ' + nomeDoAutor(autor) + ' neste dia?')) return;
+        if (estado.notas[chave]) delete estado.notas[chave][autor];
+        Sincronia.salvarEntradaDiario(chave, autor, '')
+          .then(function () { renderDetalhe(); renderGrade(); })
+          .catch(function (err) { Interface.avisar(err.message, 'erro'); });
+      });
+    });
   }
 
   /* ---------------- modais ---------------- */
@@ -476,17 +536,50 @@ var CalendarioJanela = (function () {
 
   /* ---------------- dados ---------------- */
 
+  /* As notas nasceram como um texto só, do mestre. Hoje cada dia guarda
+     uma entrada por autor: { mestre: "...", "heroi-1": "..." }. Aqui o
+     formato antigo é convertido sem perder nada. */
+  function normalizarNotas(cruas) {
+    var saida = {};
+    Object.keys(cruas || {}).forEach(function (chave) {
+      var v = cruas[chave];
+      if (typeof v === 'string') { if (v.trim()) saida[chave] = { mestre: v }; }
+      else if (v && typeof v === 'object') saida[chave] = v;
+    });
+    return saida;
+  }
+
   function adotar(remoto) {
-    if (!remoto || !remoto.dataAtual) return false;
+    if (!remoto) return false;
+    var base = padrao();
     estado = {
       versao: remoto.versao || 1,
-      dataAtual: remoto.dataAtual,
-      inicioCampanha: remoto.inicioCampanha || padrao().inicioCampanha,
+      dataAtual: remoto.dataAtual || base.dataAtual,
+      inicioCampanha: remoto.inicioCampanha || base.inicioCampanha,
       nimb: remoto.nimb || {},
-      notas: remoto.notas || {}
+      notas: normalizarNotas(remoto.notas)
     };
     C.carregarNimb(estado.nimb);
     return true;
+  }
+
+  function entradasDoDia(chave) {
+    var d = estado.notas[chave];
+    if (!d) return [];
+    return Object.keys(d)
+      .filter(function (autor) { return String(d[autor] || '').trim(); })
+      .sort(function (a, b) {
+        if (a === 'mestre') return -1;
+        if (b === 'mestre') return 1;
+        return a.localeCompare(b);
+      })
+      .map(function (autor) { return { autor: autor, texto: d[autor] }; });
+  }
+
+  function nomeDoAutor(autor) {
+    if (autor === 'mestre') return 'O mestre';
+    var h = Interface.heroiPorId(autor);
+    return h ? h.nome : 'Alguém';
   }
 
   /* ---------------- render geral ---------------- */
@@ -593,12 +686,22 @@ var CalendarioJanela = (function () {
     });
 
     Interface.quandoPapelMudar(function () { renderControles(); renderDetalhe(); });
+    Interface.quandoIdentidadeMudar(function () { renderDetalhe(); });
 
     Tema.aoMudar(function () { renderHoje(); renderRelogioReal(); });
     setInterval(renderRelogioReal, 1000);
   }
 
   return {
+    /* O mapa precisa saber em que dia a campanha está para carimbar
+       os momentos da crônica. */
+    dataAtual: function () {
+      return {
+        ano: estado.dataAtual.ano, mes: estado.dataAtual.mes,
+        dia: estado.dataAtual.dia, nimb: !!estado.dataAtual.nimb,
+        hora: estado.dataAtual.hora, minuto: estado.dataAtual.minuto
+      };
+    },
     preparar: preparar,
     abrir: abrir,
     fechar: fechar,

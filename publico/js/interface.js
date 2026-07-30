@@ -183,13 +183,17 @@ var Interface = (function () {
         botao.hidden = true;
       } else {
         botao.hidden = false;
-        botao.textContent = mestre ? 'Sair' : 'Entrar como mestre';
+        botao.textContent = mestre
+          ? 'Sair'
+          : (Sincronia.portaoFechado() ? 'Sou o mestre' : 'Entrar como mestre');
       }
     }
 
     $$('.so-mestre').forEach(function (el) {
       el.setAttribute('data-visivel', mestre ? 'sim' : 'nao');
     });
+
+    pintarIdentidade();
 
     aoMudarPapel.forEach(function (cb) {
       try { cb(mestre); } catch (e) { console.error(e); }
@@ -256,6 +260,164 @@ var Interface = (function () {
     aoMudarPapel.push(callback);
   }
 
+  /* ---------- Quem está olhando ----------
+     O mestre é o mestre. Os jogadores dizem qual herói são, e é isso
+     que assina o diário. Fica guardado só no navegador de cada um. */
+
+  var CHAVE_EU = 'euSou';
+  var ouvintesIdentidade = [];
+
+  function quemEuSou() {
+    if (Sincronia.ehMestre()) return 'mestre';
+    return Armazenamento.ler(CHAVE_EU, null);
+  }
+
+  function definirQuemEuSou(id) {
+    if (id) Armazenamento.gravar(CHAVE_EU, id);
+    else Armazenamento.apagar(CHAVE_EU);
+    ouvintesIdentidade.forEach(function (cb) {
+      try { cb(quemEuSou()); } catch (e) { console.error(e); }
+    });
+    pintarIdentidade();
+  }
+
+  function quandoIdentidadeMudar(cb) { ouvintesIdentidade.push(cb); }
+
+  /* Os heróis vêm do mapa, que é quem guarda o grupo. */
+  function herois() {
+    var mapa = Sincronia.dadosMapa();
+    var lista = (mapa && mapa.tokens) || (typeof DadosMapa !== 'undefined' ? DadosMapa.tokensPadrao() : []);
+    return lista.filter(function (t) { return t.nome; });
+  }
+
+  function heroiPorId(id) {
+    var achado = null;
+    herois().forEach(function (t) { if (t.id === id) achado = t; });
+    return achado;
+  }
+
+  function pintarIdentidade() {
+    var caixa = $('#quem-sou');
+    if (!caixa) return;
+    if (Sincronia.ehMestre()) { caixa.hidden = true; return; }
+
+    var lista = herois();
+    if (!lista.length) { caixa.hidden = true; return; }
+    caixa.hidden = false;
+
+    var eu = heroiPorId(quemEuSou());
+    caixa.innerHTML = eu
+      ? '<span class="retrato-mini" style="border-color:' + escapar(eu.cor) + ';' +
+        (eu.foto ? 'background-image:url(&quot;' + escapar(eu.foto) + '&quot;)'
+                 : 'background:' + escapar(eu.cor)) + '">' +
+        (eu.foto ? '' : escapar(eu.nome.charAt(0).toUpperCase())) + '</span>' +
+        '<span>' + escapar(eu.nome) + '</span>'
+      : '<span class="retrato-mini vazio">?</span><span>Quem é você?</span>';
+  }
+
+  function abrirEscolhaDeHeroi() {
+    var lista = herois();
+    var caixa = $('#escolha-herois');
+    if (!caixa) return;
+    caixa.innerHTML = '';
+    if (!lista.length) {
+      caixa.innerHTML = '<div class="vazio">O mestre ainda não montou o grupo.</div>';
+    }
+    var eu = quemEuSou();
+    lista.forEach(function (t) {
+      var b = document.createElement('button');
+      b.className = 'cartao-heroi' + (eu === t.id ? ' escolhido' : '');
+      b.type = 'button';
+      b.innerHTML = '<span class="retrato-medio" style="border-color:' + escapar(t.cor) + ';' +
+        (t.foto ? 'background-image:url(&quot;' + escapar(t.foto) + '&quot;)'
+                : 'background:' + escapar(t.cor)) + '">' +
+        (t.foto ? '' : escapar(t.nome.charAt(0).toUpperCase())) + '</span>' +
+        '<span class="nome-heroi">' + escapar(t.nome) + '</span>';
+      b.addEventListener('click', function () {
+        definirQuemEuSou(t.id);
+        fecharModal('modal-quem');
+        avisar('Você é ' + t.nome + '. O diário vai assinar por você.');
+      });
+      caixa.appendChild(b);
+    });
+
+    var espectador = document.createElement('button');
+    espectador.className = 'cartao-heroi' + (!quemEuSou() ? ' escolhido' : '');
+    espectador.type = 'button';
+    espectador.innerHTML = '<span class="retrato-medio vazio">👁</span>' +
+      '<span class="nome-heroi">Só assistindo</span>';
+    espectador.addEventListener('click', function () {
+      definirQuemEuSou(null);
+      fecharModal('modal-quem');
+    });
+    caixa.appendChild(espectador);
+
+    abrirModal('modal-quem');
+  }
+
+  function ligarIdentidade() {
+    var caixa = $('#quem-sou');
+    if (caixa) caixa.addEventListener('click', abrirEscolhaDeHeroi);
+    var fechar = $('#fechar-quem');
+    if (fechar) fechar.addEventListener('click', function () { fecharModal('modal-quem'); });
+    Sincronia.aoMudar('mapa', pintarIdentidade);
+    Sincronia.aoMudar('sessao', pintarIdentidade);
+  }
+
+  /* ---------- A porta ---------- */
+
+  /* Com a mesa fechada, nada é carregado antes da senha. A porta some
+     sozinha quando alguém entra, seja como jogador ou como mestre. */
+  function ligarPortao() {
+    var portao = $('#portao');
+    if (!portao) return;
+
+    function atualizar() {
+      var trancado = Sincronia.estaOnline() && !Sincronia.entrou();
+      portao.hidden = !trancado;
+      document.body.classList.toggle('trancado', trancado);
+      if (trancado) {
+        var campo = $('#portao-senha');
+        if (campo && document.activeElement !== campo) setTimeout(function () { campo.focus(); }, 60);
+      }
+    }
+
+    function tentar() {
+      var campo = $('#portao-senha');
+      var erro = $('#portao-erro');
+      var botao = $('#portao-entrar');
+      var senha = campo ? campo.value : '';
+      if (!senha) { if (erro) erro.textContent = 'Digite a senha.'; return; }
+      if (botao) { botao.disabled = true; botao.textContent = 'Abrindo…'; }
+      Sincronia.entrar(senha)
+        .then(function (nivel) {
+          if (campo) campo.value = '';
+          if (erro) erro.textContent = '';
+          atualizar();
+          avisar(nivel === 'mestre'
+            ? 'Bem-vindo, mestre. O mundo é seu.'
+            : 'Bem-vindo a Arton.');
+        })
+        .catch(function (e) {
+          if (erro) erro.textContent = e.message || 'Não foi possível entrar.';
+        })
+        .then(function () {
+          if (botao) { botao.disabled = false; botao.textContent = 'Entrar'; }
+        });
+    }
+
+    var botao = $('#portao-entrar');
+    if (botao) botao.addEventListener('click', tentar);
+    var campo = $('#portao-senha');
+    if (campo) campo.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') tentar();
+    });
+
+    Sincronia.aoMudar('sessao', atualizar);
+    Sincronia.aoMudar('conexao', atualizar);
+    atualizar();
+  }
+
   /* ---------- Início ---------- */
 
   function iniciar() {
@@ -264,8 +426,11 @@ var Interface = (function () {
     ligarFaseDoDia();
     ligarConfigTema();
     ligarSessao();
+    ligarIdentidade();
+    ligarPortao();
     return Sincronia.iniciar().then(function (estado) {
       pintarPapel();
+      pintarIdentidade();
       return estado;
     });
   }
@@ -280,6 +445,13 @@ var Interface = (function () {
     abrirConfigTema: abrirConfigTema,
     pintarPapel: pintarPapel,
     quandoPapelMudar: quandoPapelMudar,
+    quemEuSou: quemEuSou,
+    definirQuemEuSou: definirQuemEuSou,
+    quandoIdentidadeMudar: quandoIdentidadeMudar,
+    herois: herois,
+    heroiPorId: heroiPorId,
+    abrirEscolhaDeHeroi: abrirEscolhaDeHeroi,
+    pintarIdentidade: pintarIdentidade,
     iniciar: iniciar
   };
 })();

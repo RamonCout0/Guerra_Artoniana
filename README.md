@@ -12,7 +12,14 @@ Tudo numa página só:
 - **Os seis heróis** ficam em cima do mapa, com nome e retrato, mostrando onde o grupo
   está agora.
 - **O calendário** abre num pop-up por cima do mapa: os doze meses de Arton, a semana dos
-  deuses, os Dias de Nimb e as datas comemorativas, com um diário de campanha por dia.
+  deuses, os Dias de Nimb e as datas comemorativas, com um diário de campanha por dia —
+  escrito a várias vozes, uma por herói.
+- **A guerra** pinta o mapa: território tomado fica listrado com as cores do conquistador
+  sobre as do dono antigo, cerco tem fronteira pulsante, revolta é hachurada.
+- **A crônica** guarda o mapa em momentos datados, e você percorre a linha do tempo para
+  ver a guerra acontecer.
+- **A névoa** esconde o que o grupo ainda não conhece.
+- **Os brasões** de treze nações são desenhados a partir da linguagem heráldica do Atlas.
 
 A paleta vem do próprio livro: o vermelho `#d22833` é o mesmo das quatorze aberturas de
 classe do básico, e o "preto" do projeto é o bordô `#3f0e16` que a Jambô usa no lugar do
@@ -45,8 +52,9 @@ Abra <http://localhost:3000>. Clique em **Entrar como mestre** e use a senha.
    para ele. O `railway.json` já manda rodar `node servidor.js`; o `PORT` o Railway define
    sozinho.
 
-2. **Defina a variável de ambiente `SENHA_MESTRE`.** Sem ela o servidor sobe com a senha
-   `mestre` e avisa no log — qualquer pessoa com o link viraria mestre.
+2. **Defina `SENHA_MESTRE` e `SENHA_JOGADOR`.** Sem a primeira, o servidor sobe com a senha
+   `mestre` e qualquer pessoa com o link viraria mestre. Sem a segunda, o link é público e
+   estranhos veem o mundo inteiro. O servidor avisa no log nos dois casos.
 
 3. **Monte um volume** e aponte `DADOS_DIR` para ele. O disco do contêiner é efêmero: sem
    volume, todo redeploy apaga o mundo que você construiu.
@@ -61,11 +69,31 @@ Abra <http://localhost:3000>. Clique em **Entrar como mestre** e use a senha.
 | Variável | Para que serve | Padrão |
 | --- | --- | --- |
 | `SENHA_MESTRE` | Senha que libera a edição | `mestre` ⚠️ |
+| `SENHA_JOGADOR` | Senha da mesa: sem ela ninguém entra | vazia = link público ⚠️ |
 | `DADOS_DIR` | Onde gravar `estado.json` | `./dados` |
 | `SEGREDO` | Assina o cookie de sessão | derivado da senha |
 | `PORT` | Porta HTTP | `3000` |
 
+O servidor tem uma porta extra, `POST /api/diario`, que é a única gravação liberada a quem
+não é mestre — e só aceita a entrada de um herói que exista no grupo, num dia válido.
+
 Trocar `SENHA_MESTRE` ou `SEGREDO` derruba as sessões abertas — é só entrar de novo.
+
+### Quem entra
+
+São três portas:
+
+| Quem | Senha | Pode |
+| --- | --- | --- |
+| **Estranho** | nenhuma | nada — a página mostra só a tela de senha |
+| **Jogador** | `SENHA_JOGADOR` | ver o mapa, o calendário e a crônica; escrever o próprio diário |
+| **Mestre** | `SENHA_MESTRE` | tudo |
+
+Mande a senha da mesa para os jogadores e guarde a sua. As duas funcionam na mesma tela de
+entrada: quem digita a do mestre entra como mestre.
+
+Se você deixar `SENHA_JOGADOR` vazia, o link volta a ser aberto a qualquer pessoa — útil
+para testar, ruim para valer.
 
 ### Atrás do proxy do Railway
 
@@ -120,6 +148,10 @@ Só como mestre:
 | Renomear qualquer coisa | Campos do painel da direita — salvam sozinhos |
 | Marcar onde a campanha se passa | Caixa **Palco de campanha ⚔️** na ficha da cidade |
 | Posicionar os heróis | Veja "Os seis heróis", logo abaixo |
+| Mudar quem manda numa terra | **Estado de guerra** na ficha: situação + sob domínio de |
+| Esconder uma terra da mesa | Desmarque **O grupo conhece esta terra**, na ficha |
+| Espiar por baixo da névoa | Ferramenta 🌫️ (`N`) — só você enxerga |
+| Guardar o mapa de hoje | **📸 Registrar momento**, na crônica embaixo do mapa |
 
 Com o contorno ligado, a fronteira mostra dois tipos de alça:
 
@@ -166,6 +198,46 @@ O alfinete só aparece no herói selecionado e só para o mestre. Retrato, nome 
 mantêm o mesmo tamanho na tela em qualquer aproximação — o herói não incha quando você dá
 zoom, e o alfinete continua do mesmo jeito para ser puxado.
 
+### A guerra no mapa
+
+Cada território tem uma **situação**: em paz, leal ao Reinado, mobilizado, sitiado, em
+revolta, conquistado ou arrasado. Marcando **Conquistado** e escolhendo quem tomou a terra,
+o território passa a ser pintado com as cores do conquistador **listradas sobre as do dono
+antigo** — dá para ver o que mudou de mão sem ler nada. Cerco ganha fronteira vermelha
+pulsante; revolta, hachura; terra arrasada fica apagada e pontilhada.
+
+A pastilha na lista lateral também fica bicolor, e um selo mostra a situação.
+
+### A crônica
+
+A faixa embaixo do mapa é a linha do tempo da guerra. Em **📸 Registrar momento** o mestre
+guarda o mapa de hoje, carimbado com a data artoniana e um título ("Yudennach cruza a
+fronteira"). Depois é só clicar num momento para ver o mapa como estava naquele dia.
+
+Os momentos ficam em ordem de data artoniana. No passado nada pode ser editado — uma tarja
+dourada avisa. O mestre pode **↩ Trazer para hoje**, que devolve fronteiras e domínios
+daquele dia ao presente, ou apagar o momento.
+
+Cidades e heróis não aparecem na crônica: eles são do agora.
+
+### A névoa
+
+Desmarcando **O grupo conhece esta terra**, o território vira **terra incógnita** para a
+mesa: sem nome, sem cor, sem cidades, e a ficha não conta nada. O mestre continua
+trabalhando normalmente — a ferramenta 🌫️ (`N`) levanta o véu só para ele, e os
+territórios que a mesa não vê ficam com contorno pontilhado para lembrar disso.
+
+### Os brasões
+
+Treze nações têm o brasão descrito no *Atlas de Arton* em linguagem heráldica de verdade —
+*"de púrpura uma torre de ouro"*, *"gironado de azul e prata, duas cimitarras passadas em
+aspa"*. O `js/heraldica.js` lê essa descrição e desenha o escudo: esmaltes, partições
+(talhado, cortado, gironado), peças (banda, faixa, aspa, campanha, orla) e um punhado de
+figuras. O que ele não reconhece vira um escudo liso com a inicial da nação.
+
+Para dar brasão a outra nação, basta escrever a descrição no campo `brasao` dela em
+`js/dados-mapa.js`.
+
 ### Calendário
 
 Abre no botão da barra do topo (que já mostra a data e a hora da campanha) ou com a tecla
@@ -175,13 +247,35 @@ O mestre move o tempo pelos botões (`−1 dia`, `+1 h`, `+8 h` para um descanso
 `+3 h` para um toque de sino) ou em **Acertar data…**. O que ele fizer aparece na tela dos
 jogadores em poucos segundos.
 
-Cada dia tem um espaço no **diário de campanha**. O mestre escreve, os jogadores leem.
+### O diário a várias vozes
+
+Cada dia tem um **diário de campanha** onde a mesa inteira escreve. O jogador clica em
+**Quem é você?** na barra do topo, escolhe seu herói, e o que ele escrever passa a ser
+assinado com o nome e o retrato do personagem. Todo mundo lê todas as entradas; o número
+no canto do dia, na grade, conta quantas vozes há ali.
+
+O mestre escreve como mestre e pode apagar qualquer entrada.
+
+> Não há senha por jogador: quem tem o link pode escrever como qualquer herói do grupo. Para
+> uma mesa de amigos isso evita atrito, e o mestre modera o que precisar. Se um dia isso
+> incomodar, dá para pôr um código por herói.
 
 Em **🌀 Dias de Nimb** você abre a carta do Deus do Caos daquele ano: quantos dias avulsos
 ele terá (de 2 a 8) e ao fim de qual mês vão cair. Sem definir nada, o app sorteia a partir
 do número do ano — sempre igual para o mesmo ano, então a mesa toda vê a mesma coisa.
 
 Atalhos: `K` abre e fecha · `←` `→` trocam de mês · `H` volta para a data atual.
+
+### No celular
+
+O mapa é a tela toda. As duas laterais viram gavetas nos botões **☰** (reinos e grupo) e
+**ⓘ** (detalhes), no alto à direita; tocar no mapa fecha a gaveta aberta.
+
+- **Dois dedos** aproximam e afastam
+- **Um dedo** arrasta o mapa, mesmo saindo de cima de um reino
+- **Toque parado** num reino seleciona e abre a ficha sozinho
+
+O calendário abre em coluna única, e os modais sobem de baixo como folhas.
 
 ### Dia e noite
 
@@ -263,7 +357,8 @@ publico/
     sincronia.js          conversa com o servidor
     armazenamento.js      localStorage, exportar e importar
     interface.js          barra do topo, login, avisos
-    mapa.js               o mapa, os heróis e as fotos (MapaArton)
+    heraldica.js          lê a linguagem heráldica do Atlas e desenha os escudos
+    mapa.js               o mapa, guerra, crônica, névoa, heróis e fotos (MapaArton)
     calendario.js         a janela do calendário (CalendarioJanela)
 ```
 

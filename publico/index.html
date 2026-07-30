@@ -26,6 +26,7 @@
   </button>
 
   <span class="emblema" id="emblema-conexao" hidden></span>
+  <button class="quem-sou" id="quem-sou" title="Diga qual herói é você — é assim que o diário assina" hidden></button>
   <span class="emblema" id="emblema-papel">Modo leitura</span>
   <div class="fase-dia" id="fase-dia" title="Clique para alternar entre automático, dia e noite">
     <span class="astro" id="fase-astro">☀️</span>
@@ -34,6 +35,29 @@
   </div>
   <button class="botao pequeno" id="botao-sessao">Entrar como mestre</button>
 </header>
+
+<!-- ============ A PORTA — quando a mesa é fechada ============ -->
+<div class="portao" id="portao" hidden>
+  <div class="portao-caixa">
+    <div class="portao-selo">⚔️</div>
+    <h1>Crônicas Artonianas</h1>
+    <p class="portao-sub">Arton, 1410 · às vésperas da Guerra Artoniana</p>
+    <p class="portao-texto">
+      Esta mesa é fechada. Peça a senha ao mestre para entrar —
+      a mesma senha vale no celular e no computador.
+    </p>
+    <label class="campo">
+      <span>Senha</span>
+      <input type="password" id="portao-senha" autocomplete="current-password"
+             placeholder="a senha da mesa ou a do mestre">
+    </label>
+    <div class="erro" id="portao-erro"></div>
+    <button class="botao primario portao-botao" id="portao-entrar">Entrar</button>
+    <p class="portao-rodape">
+      Se você é o mestre, use a sua senha: ela abre tudo.
+    </p>
+  </div>
+</div>
 
 <!-- ============ O MAPA (mapa.js monta aqui dentro) ============ -->
 <div class="area-mapa" id="mapa-raiz"></div>
@@ -174,6 +198,18 @@
   </div>
 </div>
 
+<!-- ============ Modal: quem é você ============ -->
+<div class="fundo-modal" id="modal-quem" hidden>
+  <div class="modal">
+    <h2>Quem é você nesta mesa?</h2>
+    <p class="subtitulo">Escolha o seu herói. É por ele que o diário de campanha vai assinar o que você escrever. Fica guardado só neste navegador.</p>
+    <div class="escolha-herois" id="escolha-herois"></div>
+    <div class="rodape">
+      <button class="botao fantasma" id="fechar-quem">Fechar</button>
+    </div>
+  </div>
+</div>
+
 <!-- ============ Modal de login ============ -->
 <div class="fundo-modal" id="modal-login" hidden>
   <div class="modal">
@@ -216,6 +252,7 @@
 <script src="js/tema.js"></script>
 <script src="js/sincronia.js"></script>
 <script src="js/geografia-arton.js"></script>
+<script src="js/heraldica.js"></script>
 <script src="js/dados-mapa.js"></script>
 <script src="js/dados-calendario.js"></script>
 <script src="js/calendario-arton.js"></script>

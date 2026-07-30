@@ -39,6 +39,7 @@ var DadosMapa = (function () {
     /* ---------------- O REINADO ---------------- */
     {
       id: 'deheon',
+      brasao: 'de prata a estátua de Valkaria de sua cor',
       nome: 'Deheon',
       nomeOficial: 'Sacro Reino-Capitânia de Deheon',
       categoria: 'reinado',
@@ -74,6 +75,7 @@ var DadosMapa = (function () {
     },
     {
       id: 'bielefeld',
+      brasao: 'talhado de prata e azul, uma balança de ouro brocante',
       nome: 'Bielefeld',
       nomeOficial: 'Reino de Bielefeld',
       categoria: 'reinado',
@@ -89,6 +91,7 @@ var DadosMapa = (function () {
     },
     {
       id: 'wynlla',
+      brasao: 'de púrpura uma torre de ouro aberta, lavrada e iluminada do campo',
       nome: 'Wynlla',
       nomeOficial: 'Reino de Wynlla',
       categoria: 'reinado',
@@ -105,6 +108,7 @@ var DadosMapa = (function () {
     },
     {
       id: 'ahlen',
+      brasao: 'de prata três raposas passantes de vermelho alinhadas em pala',
       nome: 'Ahlen',
       nomeOficial: 'Mui Exaltado Reino de Ahlen',
       categoria: 'reinado',
@@ -120,6 +124,7 @@ var DadosMapa = (function () {
     },
     {
       id: 'zakharov',
+      brasao: 'de vermelho uma aspa de prata carregada de uma águia de negro',
       nome: 'Zakharov',
       nomeOficial: 'Reino de Zakharov',
       categoria: 'reinado',
@@ -136,6 +141,7 @@ var DadosMapa = (function () {
     },
     {
       id: 'namalkah',
+      brasao: 'de verde um cavalo passante de prata coroado de ouro',
       nome: 'Namalkah',
       nomeOficial: 'Veneráveis Hostes de Namalkah',
       categoria: 'reinado',
@@ -150,6 +156,7 @@ var DadosMapa = (function () {
     },
     {
       id: 'pondsmania',
+      brasao: 'de prata duas dríades adossadas e unidas pela cintura a uma árvore arrancada de verde',
       nome: 'Pondsmânia',
       nomeOficial: 'Reino das Fadas de Pondsmânia',
       categoria: 'reinado',
@@ -166,6 +173,7 @@ var DadosMapa = (function () {
     },
     {
       id: 'trebuck',
+      brasao: 'de vermelho três espadas de prata, guarnecidas e maçanetadas de ouro',
       nome: 'Feudos de Trebuck',
       nomeOficial: 'Feudos Independentes de Trebuck',
       categoria: 'reinado',
@@ -196,6 +204,7 @@ var DadosMapa = (function () {
     },
     {
       id: 'sanburdia',
+      brasao: 'de verde uma roda de ouro, em uma campanha arqueada de azul e perfilada de prata',
       nome: 'Sambúrdia',
       nomeOficial: 'Repúblicas Livres de Sambúrdia',
       categoria: 'independente',
@@ -211,6 +220,7 @@ var DadosMapa = (function () {
     },
     {
       id: 'nova-malpetrim',
+      brasao: 'de azul um castelo de prata assente sobre um monte de verde',
       nome: 'Nova Malpetrim',
       nomeOficial: 'Cidade Livre de Nova Malpetrim',
       categoria: 'independente',
@@ -240,6 +250,7 @@ var DadosMapa = (function () {
     },
     {
       id: 'salistick',
+      brasao: 'de prata uma banda de vermelho',
       nome: 'Salistick',
       nomeOficial: 'Majestado Único de Aghmen, Acetos, Balium e Ystamen',
       categoria: 'independente',
@@ -387,6 +398,7 @@ var DadosMapa = (function () {
     /* ---------------- ALÉM DO REINADO ---------------- */
     {
       id: 'sckharshantallas',
+      brasao: 'de ouro, um dragão rampante de vermelho coroado do campo',
       nome: 'Sckharshantallas',
       nomeOficial: 'Reino Dracônico de Sckharshantallas',
       categoria: 'independente',
@@ -508,6 +520,7 @@ var DadosMapa = (function () {
     },
     {
       id: 'deserto-perdicao',
+      brasao: 'gironado de azul e prata, sobre tudo duas cimitarras passadas em aspa',
       nome: 'Deserto da Perdição',
       nomeOficial: 'Deserto da Perdição',
       categoria: 'regiao',
@@ -858,6 +871,23 @@ var DadosMapa = (function () {
     return lista;
   }
 
+  /* ---------------------------------------------------------------
+     ESTADO DE GUERRA
+     Quem manda em cada terra, e como isso aparece no mapa. Quando um
+     território é conquistado, ele passa a ser pintado com as cores do
+     conquistador listradas sobre as do dono original — dá para ver de
+     relance o que mudou de mão sem ler nada.
+     --------------------------------------------------------------- */
+  var ESTADOS_GUERRA = {
+    neutro:      { rotulo: 'Em paz',            ordem: 0, icone: '·' },
+    leal:        { rotulo: 'Leal ao Reinado',   ordem: 1, icone: '⚜️' },
+    mobilizado:  { rotulo: 'Mobilizado',        ordem: 2, icone: '🛡️' },
+    sitiado:     { rotulo: 'Sitiado',           ordem: 3, icone: '⚔️' },
+    revolta:     { rotulo: 'Em revolta',        ordem: 4, icone: '🔥' },
+    conquistado: { rotulo: 'Conquistado',       ordem: 5, icone: '🏴' },
+    arrasado:    { rotulo: 'Arrasado',          ordem: 6, icone: '💀' }
+  };
+
   var CATEGORIAS = {
     reinado:      { rotulo: 'O Reinado',        ordem: 1 },
     independente: { rotulo: 'Nações e reinos',  ordem: 2 },
@@ -876,15 +906,23 @@ var DadosMapa = (function () {
     TIPOS_CIDADE: TIPOS_CIDADE,
     CATEGORIAS: CATEGORIAS,
     ANO: 1410,
+    ESTADOS_GUERRA: ESTADOS_GUERRA,
     MAX_TOKENS: 6,
     CORES_TOKEN: CORES_TOKEN,
     tokensPadrao: tokensPadrao,
     padrao: function () {
+      var nacoes = clonar(NACOES);
+      nacoes.forEach(function (n) {
+        n.estadoGuerra = 'neutro';   // ver ESTADOS_GUERRA
+        n.controladoPor = null;      // id de quem tomou a terra, se tomada
+        n.conhecido = true;          // névoa: o grupo já esteve/ouviu falar
+      });
       return {
-        versao: 2, ano: 1410,
-        nacoes: clonar(NACOES),
+        versao: 3, ano: 1410,
+        nacoes: nacoes,
         cidades: clonar(CIDADES),
-        tokens: tokensPadrao()
+        tokens: tokensPadrao(),
+        cronica: []                  // instantâneos datados do mapa
       };
     }
   };
