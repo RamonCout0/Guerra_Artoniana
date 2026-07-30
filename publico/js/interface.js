@@ -311,8 +311,8 @@ var Interface = (function () {
         (eu.foto ? 'background-image:url(&quot;' + escapar(eu.foto) + '&quot;)'
                  : 'background:' + escapar(eu.cor)) + '">' +
         (eu.foto ? '' : escapar(eu.nome.charAt(0).toUpperCase())) + '</span>' +
-        '<span>' + escapar(eu.nome) + '</span>'
-      : '<span class="retrato-mini vazio">?</span><span>Quem é você?</span>';
+        '<span class="quem-nome">' + escapar(eu.nome) + '</span>'
+      : '<span class="retrato-mini vazio">?</span><span class="quem-nome">Quem é você?</span>';
   }
 
   function abrirEscolhaDeHeroi() {

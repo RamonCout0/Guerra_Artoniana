@@ -1,9 +1,11 @@
 /* =============================================================
    SERVIDOR — Crônicas Artonianas
-   Node.js puro, sem dependências. Pronto para o Railway.
+   Node.js puro (a única dependência é o driver do Postgres, banco.js).
+   Pronto para o Railway.
 
    - Serve os arquivos estáticos de ./publico
-   - Guarda o estado compartilhado (mapa + calendário) em disco
+   - Guarda o estado compartilhado (mapa + calendário) no Postgres
+     (DATABASE_URL) ou, sem banco configurado, num arquivo local
    - Só o mestre, autenticado por senha, pode gravar
    - Jogadores acessam a mesma URL e enxergam tudo em modo leitura
 
@@ -13,7 +15,8 @@
      SENHA_JOGADOR senha da mesa; sem ela, ninguém entra. Se ficar vazia,
                    o link é aberto a qualquer pessoa (como era antes).
      SEGREDO       segredo para assinar o cookie    (padrão: derivado da senha)
-     DADOS_DIR     pasta onde o estado é gravado    (padrão: ./dados)
+     DATABASE_URL  conexão do Postgres; sem ela, cai para o arquivo local
+     DADOS_DIR     pasta do arquivo local, sem DATABASE_URL (padrão: ./dados)
    ============================================================= */
 
 'use strict';
@@ -22,6 +25,7 @@ var http = require('http');
 var fs = require('fs');
 var path = require('path');
 var crypto = require('crypto');
+var Banco = require('./banco.js');
 
 var PORTA = parseInt(process.env.PORT, 10) || 3000;
 var SENHA_MESTRE = process.env.SENHA_MESTRE || 'mestre';
@@ -33,9 +37,12 @@ var DADOS_DIR = process.env.DADOS_DIR || path.join(__dirname, 'dados');
 var ARQUIVO_ESTADO = path.join(DADOS_DIR, 'estado.json');
 var RAIZ_PUBLICA = path.join(__dirname, 'publico');
 var DURACAO_SESSAO_MS = 30 * 24 * 60 * 60 * 1000;  // 30 dias
+var DATABASE_URL = process.env.DATABASE_URL || '';
+var USANDO_POSTGRES = DATABASE_URL.length > 0;
 
 /* ------------------------------------------------------------------
-   Estado em disco
+   Estado — em Postgres (DATABASE_URL definida) ou em disco (fallback
+   para rodar local sem banco nenhum).
    ------------------------------------------------------------------ */
 
 var estado = { versao: 1, atualizadoEm: 0, mapa: null, calendario: null };
@@ -48,7 +55,15 @@ function garantirPasta() {
   }
 }
 
-function carregarEstado() {
+/* Carrega o estado inicial e só então libera o servidor para ouvir a
+   porta — devolve uma promise nos dois modos. */
+function iniciarEstado() {
+  if (USANDO_POSTGRES) {
+    return Banco.iniciar(DATABASE_URL, ARQUIVO_ESTADO).then(function (carregado) {
+      estado = carregado;
+      console.log('Estado carregado do Postgres.');
+    });
+  }
   garantirPasta();
   try {
     var bruto = fs.readFileSync(ARQUIVO_ESTADO, 'utf8');
@@ -64,23 +79,34 @@ function carregarEstado() {
     if (e.code !== 'ENOENT') console.warn('Estado ilegível, começando do zero:', e.message);
     else console.log('Nenhum estado salvo ainda — os clientes usarão o padrão embutido.');
   }
+  return Promise.resolve();
+}
+
+function persistirEstadoAgora() {
+  if (USANDO_POSTGRES) {
+    return Banco.salvarEstado(estado).catch(function (e) {
+      console.error('Falha ao gravar o estado no Postgres:', e.message);
+    });
+  }
+  garantirPasta();
+  var temporario = ARQUIVO_ESTADO + '.tmp';
+  try {
+    fs.writeFileSync(temporario, JSON.stringify(estado), 'utf8');
+    fs.renameSync(temporario, ARQUIVO_ESTADO);
+  } catch (e) {
+    console.error('Falha ao gravar o estado:', e.message);
+  }
+  return Promise.resolve();
 }
 
 var gravacaoPendente = null;
 
 function salvarEstado() {
-  // agrupa gravações próximas para não castigar o disco
+  // agrupa gravações próximas para não castigar o banco/disco
   if (gravacaoPendente) clearTimeout(gravacaoPendente);
   gravacaoPendente = setTimeout(function () {
     gravacaoPendente = null;
-    garantirPasta();
-    var temporario = ARQUIVO_ESTADO + '.tmp';
-    try {
-      fs.writeFileSync(temporario, JSON.stringify(estado), 'utf8');
-      fs.renameSync(temporario, ARQUIVO_ESTADO);
-    } catch (e) {
-      console.error('Falha ao gravar o estado:', e.message);
-    }
+    persistirEstadoAgora();
   }, 250);
 }
 
@@ -484,8 +510,6 @@ function tratarApi(req, res, rota, consulta) {
    Servidor
    ------------------------------------------------------------------ */
 
-carregarEstado();
-
 var servidor = http.createServer(function (req, res) {
   var endereco;
   try {
@@ -506,33 +530,55 @@ var servidor = http.createServer(function (req, res) {
   servirEstatico(req, res, rota);
 });
 
-servidor.listen(PORTA, function () {
-  console.log('');
-  console.log('  ⚔️  Crônicas Artonianas — circa 1410');
-  console.log('  ---------------------------------------------');
-  console.log('  Servindo em  http://localhost:' + PORTA);
-  console.log('  Dados em     ' + ARQUIVO_ESTADO);
-  console.log('  Acesso       ' + (PORTAO_FECHADO
-    ? 'fechado — só quem tem a senha da mesa entra'
-    : 'ABERTO — qualquer pessoa com o link vê tudo'));
-  if (!PORTAO_FECHADO) {
+iniciarEstado().then(function () {
+  servidor.listen(PORTA, function () {
     console.log('');
-    console.log('  ⚠️  SENHA_JOGADOR não definida — o link é público.');
-    console.log('     Defina-a para que só a sua mesa entre.');
-  }
-  if (!process.env.SENHA_MESTRE) {
+    console.log('  ⚔️  Crônicas Artonianas — circa 1410');
+    console.log('  ---------------------------------------------');
+    console.log('  Servindo em  http://localhost:' + PORTA);
+    console.log('  Dados em     ' + (USANDO_POSTGRES ? 'Postgres (DATABASE_URL)' : ARQUIVO_ESTADO));
+    console.log('  Acesso       ' + (PORTAO_FECHADO
+      ? 'fechado — só quem tem a senha da mesa entra'
+      : 'ABERTO — qualquer pessoa com o link vê tudo'));
+    if (!PORTAO_FECHADO) {
+      console.log('');
+      console.log('  ⚠️  SENHA_JOGADOR não definida — o link é público.');
+      console.log('     Defina-a para que só a sua mesa entre.');
+    }
+    if (!process.env.SENHA_MESTRE) {
+      console.log('');
+      console.log('  ⚠️  SENHA_MESTRE não definida — usando "mestre".');
+      console.log('     Defina a variável de ambiente antes de publicar!');
+    }
+    if (!USANDO_POSTGRES) {
+      console.log('');
+      console.log('  ⚠️  DATABASE_URL não definida — gravando em arquivo local.');
+      console.log('     No Railway, sem um banco Postgres o mundo se perde a cada redeploy.');
+    }
     console.log('');
-    console.log('  ⚠️  SENHA_MESTRE não definida — usando "mestre".');
-    console.log('     Defina a variável de ambiente antes de publicar!');
-  }
-  console.log('');
+  });
+}).catch(function (e) {
+  console.error('Não consegui carregar o estado inicial:', e.message);
+  process.exit(1);
 });
 
 process.on('SIGTERM', function () {
   if (gravacaoPendente) { clearTimeout(gravacaoPendente); gravacaoPendente = null; }
+
+  function finalizar() { servidor.close(function () { process.exit(0); }); }
+
+  if (USANDO_POSTGRES) {
+    var tempoLimite = setTimeout(finalizar, 3000);
+    Banco.salvarEstado(estado).catch(function () { /* melhor esforço */ }).then(function () {
+      clearTimeout(tempoLimite);
+      finalizar();
+    });
+    return;
+  }
+
   try {
     garantirPasta();
     fs.writeFileSync(ARQUIVO_ESTADO, JSON.stringify(estado), 'utf8');
   } catch (e) { /* nada a fazer */ }
-  servidor.close(function () { process.exit(0); });
+  finalizar();
 });

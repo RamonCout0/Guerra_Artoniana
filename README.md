@@ -35,14 +35,19 @@ com a senha ganha as ferramentas de edição.
 
 ## Rodando na sua máquina
 
-Precisa só do Node.js 18 ou mais novo. Não há dependências para instalar.
+Precisa do Node.js 18 ou mais novo. A única dependência é o driver do Postgres (`pg`).
 
 ```bash
 cd Artoniana
+npm install
 SENHA_MESTRE="a-senha-que-voce-quiser" node servidor.js
 ```
 
 Abra <http://localhost:3000>. Clique em **Entrar como mestre** e use a senha.
+
+Sem `DATABASE_URL` definida, o servidor grava o mundo num arquivo local
+(`dados/estado.json`) — ótimo para testar na sua máquina, sem precisar de um Postgres
+rodando. Veja a seção seguinte para publicar com Postgres de verdade.
 
 ---
 
@@ -56,11 +61,15 @@ Abra <http://localhost:3000>. Clique em **Entrar como mestre** e use a senha.
    `mestre` e qualquer pessoa com o link viraria mestre. Sem a segunda, o link é público e
    estranhos veem o mundo inteiro. O servidor avisa no log nos dois casos.
 
-3. **Monte um volume** e aponte `DADOS_DIR` para ele. O disco do contêiner é efêmero: sem
-   volume, todo redeploy apaga o mundo que você construiu.
+3. **Adicione um banco Postgres ao projeto.** O disco do contêiner é efêmero: sem um banco,
+   todo redeploy apaga o mundo que você construiu — é para isso que serve o Postgres aqui.
 
-   - Crie um volume no serviço, com ponto de montagem `/dados`
-   - Defina `DADOS_DIR=/dados`
+   - No projeto do Railway, clique em **New** → **Database** → **Add PostgreSQL**.
+   - Como o Postgres fica no mesmo projeto, o Railway já injeta `DATABASE_URL` nas
+     variáveis do serviço da aplicação automaticamente (se não injetar sozinho, adicione a
+     variável `DATABASE_URL` apontando para `${{Postgres.DATABASE_URL}}`).
+   - Pronto — o servidor detecta `DATABASE_URL` e passa a gravar o mundo no Postgres, que
+     sobrevive a redeploys sem precisar de volume nenhum.
 
 4. Mande o link para a mesa. Quem abrir sem a senha entra em modo leitura.
 
@@ -70,9 +79,14 @@ Abra <http://localhost:3000>. Clique em **Entrar como mestre** e use a senha.
 | --- | --- | --- |
 | `SENHA_MESTRE` | Senha que libera a edição | `mestre` ⚠️ |
 | `SENHA_JOGADOR` | Senha da mesa: sem ela ninguém entra | vazia = link público ⚠️ |
-| `DADOS_DIR` | Onde gravar `estado.json` | `./dados` |
+| `DATABASE_URL` | Conexão do Postgres onde o mundo é gravado | sem ela, cai para um arquivo local ⚠️ |
+| `DADOS_DIR` | Onde gravar `estado.json` quando não há `DATABASE_URL` | `./dados` |
 | `SEGREDO` | Assina o cookie de sessão | derivado da senha |
 | `PORT` | Porta HTTP | `3000` |
+
+Sem `DATABASE_URL` no Railway, o servidor sobe do mesmo jeito, mas grava no disco efêmero
+do contêiner — e some no próximo redeploy. É por isso que vale a pena configurar o
+Postgres antes de convidar a mesa.
 
 O servidor tem uma porta extra, `POST /api/diario`, que é a única gravação liberada a quem
 não é mestre — e só aceita a entrada de um herói que exista no grupo, num dia válido.
@@ -336,9 +350,10 @@ legenda lá dentro se quiser afinar o resultado.
 ## Estrutura
 
 ```
-servidor.js               servidor HTTP, API e sessão do mestre (Node puro, sem dependências)
+servidor.js               servidor HTTP, API e sessão do mestre (Node puro)
+banco.js                  persistência em Postgres (usada quando há DATABASE_URL)
 railway.json              configuração de deploy
-dados/estado.json         o mundo salvo (criado sozinho; não vai para o git)
+dados/estado.json         o mundo salvo em arquivo local, sem DATABASE_URL (não vai para o git)
 ferramentas/
   vetorizar.py            gera o traçado vetorial a partir da prancha
   mapa-origem-1410.png    a prancha original (não é servida; só serve de fonte)

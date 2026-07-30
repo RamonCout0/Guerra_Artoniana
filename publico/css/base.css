@@ -598,7 +598,10 @@ body.trancado .janela-calendario { visibility: hidden; }
   :root { --barra-altura: 52px; }
 
   .barra { gap: 8px; padding: 0 10px; overflow: hidden; }
-  .barra .marca { font-size: 14px; }
+  /* A marca vira só o brasão: nome completo, busca e mais quatro
+     controles não cabem juntos numa barra de celular. */
+  .barra .marca { font-size: 0; }
+  .barra .marca::before { content: "⚔️"; font-size: 18px; }
   .barra .marca small { display: none; }
 
   /* A busca vira um campo curto; o resto do espaço é do mapa. */
@@ -640,8 +643,19 @@ body.trancado .janela-calendario { visibility: hidden; }
   .portao-caixa { padding: 26px 20px 20px; }
 }
 
-/* Telas bem estreitas: o essencial. */
-@media (max-width: 400px) {
-  .barra .marca { font-size: 0; }
-  .barra .marca::before { content: "⚔️"; font-size: 18px; }
+/* Telas de celular (a maioria dos aparelhos atuais cai bem aqui, de
+   ~360 a ~430px de largura): aperta mais a barra. */
+@media (max-width: 480px) {
+  .barra { gap: 5px; padding: 0 8px; }
+  .barra .caixa-busca { min-width: 84px; }
+}
+
+/* Telas minúsculas (celulares antigos, ~320px): aperta mais um pouco. */
+@media (max-width: 340px) {
+  .barra { gap: 3px; padding: 0 6px; }
+  .barra .caixa-busca { min-width: 66px; }
+  #abrir-calendario, #botao-sessao { padding: 7px 8px; }
+  .fase-dia { padding: 5px 7px; gap: 0; }
+  .fase-dia .astro { display: none; }
+  .quem-sou { padding: 4px 5px; }
 }
