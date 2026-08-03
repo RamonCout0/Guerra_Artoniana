@@ -93,7 +93,14 @@ var DadosCalendario = (function () {
 
   /* Datas comemorativas do calendário artoniano (Atlas de Arton, p. 32-33).
      "desde" indica o primeiro ano em que a data existe — o Dia da Memória
-     só passa a ser celebrado após o fim da Guerra Artoniana. */
+     só passa a ser celebrado após o fim da Guerra Artoniana.
+
+     A guerra termina em 1417, não em 1411: a linha do tempo oficial em
+     "Jornada Heróica — Guerra Artoniana" (Arco 3, Linha do Tempo) põe o
+     conflito começando só em 1412, quando Von Krauser se revela General
+     Supremo, e encerrando em 1417 com a trégua e a redefinição das
+     fronteiras. Como a cronologia dá o ano mas não o dia, a primeira
+     celebração fica em 1418 — o 6 de Sirravia seguinte ao fim garantido. */
   var DATAS_ESPECIAIS = [
     {
       mes: 1, dia: 1, nome: 'Dia do Reencontro', tipo: 'feriado',
@@ -114,7 +121,7 @@ var DadosCalendario = (function () {
         'reservado à execução de criminosos.'
     },
     {
-      mes: 4, dia: 6, nome: 'Dia da Memória', tipo: 'feriado', desde: 1411,
+      mes: 4, dia: 6, nome: 'Dia da Memória', tipo: 'feriado', desde: 1418,
       descricao: 'Cerimônia recente, celebrada no Reinado para comemorar o fim da Guerra ' +
         'Artoniana e honrar aqueles que caíram frente às tropas puristas.'
     },

@@ -27,8 +27,21 @@ var CalendarioJanela = (function () {
       dataAtual: { ano: 1410, mes: 3, dia: 5, nimb: false, hora: 8, minuto: 0 },
       inicioCampanha: { ano: 1410, mes: 3, dia: 5, nimb: false },
       nimb: {},
-      notas: {}
+      notas: {},
+      sessoes: []
     };
+  }
+
+  /* ---------------- a crônica, vista daqui ----------------
+     Os momentos são do mapa, mas cada um tem uma data artoniana. Aqui
+     eles viram marca na grade: o dia em que a guerra virou fica visível
+     no calendário, e um clique leva ao mapa daquele dia. */
+
+  function momentosDoDia(data) {
+    if (typeof MapaArton === 'undefined' || !MapaArton.momentos) return [];
+    return MapaArton.momentos().filter(function (m) {
+      return ehMesmoDia(m.data, data);
+    });
   }
 
   var estado = padrao();
@@ -262,10 +275,13 @@ var CalendarioJanela = (function () {
     var vozes = entradasDoDia(chaveNota(data));
     var nota = vozes.length ? vozes[0].texto : null;
 
+    var marcos = momentosDoDia(data);
+
     celula.className = 'dia' +
       (data.nimb ? ' nimb' : '') +
       (ehMesmoDia(data, estado.dataAtual) ? ' hoje-marcado' : '') +
       (ehMesmoDia(data, estado.inicioCampanha) ? ' inicio-campanha' : '') +
+      (marcos.length ? ' tem-momento' : '') +
       (diaSelecionado && ehMesmoDia(data, diaSelecionado) ? ' selecionado' : '');
 
     var numero = document.createElement('div');
@@ -296,6 +312,15 @@ var CalendarioJanela = (function () {
       if (vozes.length > 1) marca.textContent = vozes.length;
       marca.title = vozes.length + (vozes.length === 1 ? ' entrada' : ' entradas') + ' no diário';
       celula.appendChild(marca);
+    }
+
+    /* O selo da crônica: neste dia o mapa da guerra mudou. */
+    if (marcos.length) {
+      var selo = document.createElement('span');
+      selo.className = 'marca-momento';
+      selo.textContent = '🕰️';
+      selo.title = marcos.map(function (m) { return m.rotulo; }).join(' · ');
+      celula.appendChild(selo);
     }
 
     celula.title = C.formatarCulta(data);
@@ -362,6 +387,37 @@ var CalendarioJanela = (function () {
         'Sobre o mês de ' + esc(mes.nome) + '</h4>' +
         '<p style="font-size:12.5px;line-height:1.6;color:var(--tinta-suave);margin:0">' +
         esc(mes.significado) + '</p></div>';
+    }
+
+    /* A crônica do mapa entra aqui: o dia deixa de ser só o diário e
+       passa a mostrar também o que a guerra fez. */
+    var marcos = momentosDoDia(data);
+    if (marcos.length) {
+      html += '<div class="secao momentos-do-dia" style="margin-top:16px">' +
+        '<div class="painel-titulo" style="padding:0 0 6px">Neste dia, no mapa</div>';
+      marcos.forEach(function (m) {
+        html += '<div class="momento-do-dia">' +
+          '<span class="momento-selo">🕰️</span>' +
+          '<span class="momento-rotulo">' + esc(m.rotulo) + '</span>' +
+          '<button class="botao pequeno" data-ver-momento="' + esc(m.id) + '" ' +
+            'title="Ver o mapa como estava neste dia">Ver o mapa</button>' +
+          '</div>';
+      });
+      html += '</div>';
+    }
+
+    var sessoesDoDia = sessoesQueCobrem(data);
+    if (sessoesDoDia.length) {
+      html += '<div class="secao" style="margin-top:16px">' +
+        '<div class="painel-titulo" style="padding:0 0 6px">Jogado em</div>';
+      sessoesDoDia.forEach(function (s) {
+        html += '<button class="sessao-atalho" data-ver-sessao="' + esc(s.id) + '">' +
+          '<b>Sessão ' + esc(String(s.numero)) + '</b>' +
+          (s.titulo ? ' — ' + esc(s.titulo) : '') +
+          (s.dataReal ? '<span class="discreto"> · ' + esc(formatarDataReal(s.dataReal)) + '</span>' : '') +
+          '</button>';
+      });
+      html += '</div>';
     }
 
     var entradas = entradasDoDia(chave);
@@ -446,6 +502,19 @@ var CalendarioJanela = (function () {
 
     var virar = $('#virar-heroi', caixa);
     if (virar) virar.addEventListener('click', Interface.abrirEscolhaDeHeroi);
+
+    $$('[data-ver-momento]', caixa).forEach(function (b) {
+      b.addEventListener('click', function () {
+        MapaArton.verMomento(b.getAttribute('data-ver-momento'));
+        fechar();   // sai da frente para o mapa aparecer
+      });
+    });
+
+    $$('[data-ver-sessao]', caixa).forEach(function (b) {
+      b.addEventListener('click', function () {
+        abrirModalSessao(b.getAttribute('data-ver-sessao'));
+      });
+    });
 
     $$('[data-apagar-autor]', caixa).forEach(function (b) {
       b.addEventListener('click', function () {
@@ -577,7 +646,9 @@ var CalendarioJanela = (function () {
       dataAtual: remoto.dataAtual || base.dataAtual,
       inicioCampanha: remoto.inicioCampanha || base.inicioCampanha,
       nimb: remoto.nimb || {},
-      notas: normalizarNotas(remoto.notas)
+      notas: normalizarNotas(remoto.notas),
+      // calendários salvos antes de as sessões existirem
+      sessoes: Array.isArray(remoto.sessoes) ? remoto.sessoes : []
     };
     C.carregarNimb(estado.nimb);
     return true;
@@ -602,6 +673,289 @@ var CalendarioJanela = (function () {
     return h ? h.nome : 'Alguém';
   }
 
+  /* ---------------- sessões de jogo ----------------
+     O diário é por dia de Arton; a sessão é o encontro de verdade, na
+     mesa de sábado. Uma cobre vários dias do jogo — é por ela que a
+     mesa se situa quando alguém falta. */
+
+  function sessoes() {
+    if (!Array.isArray(estado.sessoes)) estado.sessoes = [];
+    return estado.sessoes;
+  }
+
+  function acharSessao(id) {
+    return sessoes().filter(function (s) { return s.id === id; })[0] || null;
+  }
+
+  /* "1410-3-5" → { ano, mes, dia, nimb }. Devolve null se não der. */
+  function lerChaveDeDia(texto) {
+    var casou = /^(-?\d{1,6})-(N|\d{1,2})-(\d{1,2})$/.exec(String(texto || '').trim());
+    if (!casou) return null;
+    var nimb = casou[2] === 'N';
+    return {
+      ano: parseInt(casou[1], 10),
+      mes: nimb ? mesVisivel.mes : parseInt(casou[2], 10),
+      dia: parseInt(casou[3], 10),
+      nimb: nimb
+    };
+  }
+
+  function formatarDataReal(iso) {
+    var partes = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ''));
+    if (!partes) return String(iso || '');
+    return partes[3] + '/' + partes[2] + '/' + partes[1];
+  }
+
+  /* As sessões que cobrem um dia de Arton. */
+  function sessoesQueCobrem(data) {
+    var alvo = C.paraAbsoluto(data);
+    return sessoes().filter(function (s) {
+      var de = lerChaveDeDia(s.de);
+      var ate = lerChaveDeDia(s.ate) || de;
+      if (!de) return false;
+      return alvo >= C.paraAbsoluto(de) && alvo <= C.paraAbsoluto(ate);
+    });
+  }
+
+  function renderSessoes() {
+    var caixa = $('#lista-sessoes');
+    if (!caixa) return;
+    caixa.textContent = '';
+
+    var lista = sessoes().slice().sort(function (a, b) {
+      return (b.numero || 0) - (a.numero || 0);
+    });
+
+    if (!lista.length) {
+      caixa.innerHTML = '<div class="vazio pequeno">' +
+        (ehMestre() ? 'Nenhuma sessão registrada. Use o + acima.'
+                    : 'O mestre ainda não registrou sessões.') + '</div>';
+      return;
+    }
+
+    lista.slice(0, 12).forEach(function (s) {
+      var item = document.createElement('button');
+      item.className = 'item-sessao';
+      item.type = 'button';
+      item.innerHTML = '<span class="sessao-numero">' + esc(String(s.numero || '?')) + '</span>' +
+        '<span class="sessao-corpo">' +
+          '<span class="sessao-nome">' + esc(s.titulo || 'Sessão sem título') + '</span>' +
+          '<span class="discreto">' +
+            (s.dataReal ? esc(formatarDataReal(s.dataReal)) : '') +
+            (s.de ? ' · ' + esc(rotuloDoIntervalo(s)) : '') +
+          '</span>' +
+        '</span>';
+      item.addEventListener('click', function () { abrirModalSessao(s.id); });
+      caixa.appendChild(item);
+    });
+  }
+
+  function rotuloDoIntervalo(s) {
+    var de = lerChaveDeDia(s.de);
+    if (!de) return '';
+    var ate = lerChaveDeDia(s.ate);
+    var texto = C.formatarColoquial(de);
+    if (ate && C.paraAbsoluto(ate) !== C.paraAbsoluto(de)) {
+      texto += ' a ' + C.formatarColoquial(ate);
+    }
+    return texto;
+  }
+
+  var sessaoEmEdicao = null;
+
+  function abrirModalSessao(id) {
+    var s = id ? acharSessao(id) : null;
+    sessaoEmEdicao = s ? s.id : null;
+    var mestre = ehMestre();
+
+    var titulo = $('#sessao-titulo-modal');
+    if (titulo) titulo.textContent = s ? ('Sessão ' + (s.numero || '')) : 'Nova sessão';
+
+    var proximo = sessoes().reduce(function (maior, o) {
+      return Math.max(maior, o.numero || 0);
+    }, 0) + 1;
+
+    var campos = {
+      numero: $('#sessao-numero'), dataReal: $('#sessao-data-real'),
+      titulo: $('#sessao-titulo'), de: $('#sessao-de'),
+      ate: $('#sessao-ate'), resumo: $('#sessao-resumo')
+    };
+    if (campos.numero) campos.numero.value = s ? (s.numero || proximo) : proximo;
+    if (campos.dataReal) {
+      campos.dataReal.value = s ? (s.dataReal || '') : new Date().toISOString().slice(0, 10);
+    }
+    if (campos.titulo) campos.titulo.value = s ? (s.titulo || '') : '';
+    if (campos.de) campos.de.value = s ? (s.de || '') : chaveNota(diaSelecionado || estado.dataAtual);
+    if (campos.ate) campos.ate.value = s ? (s.ate || '') : chaveNota(estado.dataAtual);
+    if (campos.resumo) campos.resumo.value = s ? (s.resumo || '') : '';
+
+    // jogador lê, não escreve
+    Object.keys(campos).forEach(function (k) {
+      if (campos[k]) campos[k].disabled = !mestre;
+    });
+    var salvarBotao = $('#sessao-salvar'), apagarBotao = $('#sessao-apagar');
+    if (salvarBotao) salvarBotao.hidden = !mestre;
+    if (apagarBotao) apagarBotao.hidden = !mestre || !s;
+
+    var erro = $('#sessao-erro');
+    if (erro) erro.textContent = '';
+
+    Interface.abrirModal('modal-sessao');
+  }
+
+  function ligarSessoes() {
+    var nova = $('#sessao-nova');
+    if (nova) nova.addEventListener('click', function () { abrirModalSessao(null); });
+
+    var salvarBotao = $('#sessao-salvar');
+    if (salvarBotao) salvarBotao.addEventListener('click', function () {
+      if (!ehMestre()) return;
+      var erro = $('#sessao-erro');
+      var de = ($('#sessao-de') || {}).value;
+      var ate = ($('#sessao-ate') || {}).value;
+
+      if (de && !lerChaveDeDia(de)) {
+        if (erro) erro.textContent = 'O dia de início não está no formato ano-mês-dia (ex.: 1410-3-5).';
+        return;
+      }
+      if (ate && !lerChaveDeDia(ate)) {
+        if (erro) erro.textContent = 'O dia final não está no formato ano-mês-dia (ex.: 1410-3-9).';
+        return;
+      }
+
+      var registro = {
+        id: sessaoEmEdicao || ('s' + Date.now().toString(36)),
+        numero: parseInt(($('#sessao-numero') || {}).value, 10) || 1,
+        dataReal: ($('#sessao-data-real') || {}).value || '',
+        titulo: (($('#sessao-titulo') || {}).value || '').trim().slice(0, 120),
+        de: (de || '').trim(),
+        ate: (ate || '').trim(),
+        resumo: (($('#sessao-resumo') || {}).value || '').trim().slice(0, 4000)
+      };
+
+      if (sessaoEmEdicao) {
+        estado.sessoes = sessoes().map(function (s) {
+          return s.id === registro.id ? registro : s;
+        });
+      } else {
+        sessoes().push(registro);
+      }
+
+      salvar();
+      renderSessoes();
+      renderDetalhe();
+      Interface.fecharModal('modal-sessao');
+      Interface.avisar('Sessão ' + registro.numero + ' registrada.');
+    });
+
+    var apagarBotao = $('#sessao-apagar');
+    if (apagarBotao) apagarBotao.addEventListener('click', function () {
+      if (!ehMestre() || !sessaoEmEdicao) return;
+      var s = acharSessao(sessaoEmEdicao);
+      if (!s) return;
+      if (!confirm('Apagar a sessão ' + s.numero + '?')) return;
+      estado.sessoes = sessoes().filter(function (o) { return o.id !== sessaoEmEdicao; });
+      salvar();
+      renderSessoes();
+      renderDetalhe();
+      Interface.fecharModal('modal-sessao');
+    });
+
+    var cancelar = $('#sessao-cancelar');
+    if (cancelar) cancelar.addEventListener('click', function () {
+      Interface.fecharModal('modal-sessao');
+    });
+  }
+
+  /* ---------------- busca no diário ----------------
+     Uma campanha longa acumula centenas de entradas espalhadas por anos
+     de calendário. Sem busca, achar "aquele dia da ponte" é navegar mês
+     a mês. */
+
+  function normalizar(texto) {
+    return String(texto).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  }
+
+  /* Todas as entradas, achatadas, com o dia de volta em objeto. */
+  function todasAsEntradas() {
+    var saida = [];
+    Object.keys(estado.notas || {}).forEach(function (chave) {
+      var data = lerChaveDeDia(chave);
+      if (!data) return;
+      var doDia = estado.notas[chave];
+      Object.keys(doDia).forEach(function (autor) {
+        var texto = String(doDia[autor] || '').trim();
+        if (texto) saida.push({ chave: chave, data: data, autor: autor, texto: texto });
+      });
+    });
+    return saida;
+  }
+
+  function ligarBuscaNoDiario() {
+    var campo = $('#diario-busca'), caixa = $('#diario-resultados');
+    if (!campo || !caixa) return;
+
+    function limpar() { caixa.textContent = ''; }
+
+    campo.addEventListener('input', function () {
+      var termo = campo.value.trim();
+      limpar();
+      if (termo.length < 2) return;
+
+      var alvo = normalizar(termo);
+      var achados = todasAsEntradas().filter(function (e) {
+        return normalizar(e.texto).indexOf(alvo) >= 0 ||
+               normalizar(nomeDoAutor(e.autor)).indexOf(alvo) >= 0;
+      }).sort(function (a, b) {
+        return C.paraAbsoluto(b.data) - C.paraAbsoluto(a.data);
+      });
+
+      if (!achados.length) {
+        caixa.innerHTML = '<div class="vazio pequeno">Nada encontrado no diário.</div>';
+        return;
+      }
+
+      achados.slice(0, 25).forEach(function (e) {
+        var item = document.createElement('button');
+        item.className = 'resultado-diario';
+        item.type = 'button';
+        item.innerHTML =
+          '<span class="resultado-quando">' + esc(C.formatarColoquial(e.data)) + '</span>' +
+          '<span class="resultado-quem">' + esc(nomeDoAutor(e.autor)) + '</span>' +
+          '<span class="resultado-trecho">' + esc(trechoAoRedor(e.texto, termo)) + '</span>';
+        item.addEventListener('click', function () {
+          diaSelecionado = e.data;
+          mesVisivel = { ano: e.data.ano, mes: e.data.mes };
+          campo.value = '';
+          limpar();
+          renderGrade(); renderMeses(); renderDetalhe();
+        });
+        caixa.appendChild(item);
+      });
+
+      if (achados.length > 25) {
+        var mais = document.createElement('div');
+        mais.className = 'vazio pequeno';
+        mais.textContent = 'e mais ' + (achados.length - 25) + '…';
+        caixa.appendChild(mais);
+      }
+    });
+
+    campo.addEventListener('blur', function () {
+      // o clique no resultado precisa acontecer antes de esconder
+      setTimeout(limpar, 180);
+    });
+  }
+
+  /* Mostra o pedaço do texto onde o termo aparece, não o começo dele. */
+  function trechoAoRedor(texto, termo) {
+    var i = normalizar(texto).indexOf(normalizar(termo));
+    if (i < 0) return texto.slice(0, 90) + (texto.length > 90 ? '…' : '');
+    var inicio = Math.max(0, i - 30);
+    var fim = Math.min(texto.length, i + termo.length + 50);
+    return (inicio > 0 ? '…' : '') + texto.slice(inicio, fim) + (fim < texto.length ? '…' : '');
+  }
+
   /* ---------------- render geral ---------------- */
 
   function renderResumoNaBarra() {
@@ -615,6 +969,7 @@ var CalendarioJanela = (function () {
     renderHoje();
     renderControles();
     renderMeses();
+    renderSessoes();
     renderGrade();
     renderDetalhe();
     renderRelogioReal();
@@ -673,6 +1028,9 @@ var CalendarioJanela = (function () {
       renderGrade(); renderMeses(); renderDetalhe();
     });
 
+    ligarSessoes();
+    ligarBuscaNoDiario();
+
     $('#confirmar-data').addEventListener('click', confirmarData);
     $('#cancelar-data').addEventListener('click', function () { Interface.fecharModal('modal-data'); });
     $('#confirmar-nimb').addEventListener('click', confirmarNimb);
@@ -705,7 +1063,15 @@ var CalendarioJanela = (function () {
       }
     });
 
-    Interface.quandoPapelMudar(function () { renderControles(); renderDetalhe(); });
+    Interface.quandoPapelMudar(function () {
+      renderControles(); renderSessoes(); renderDetalhe();
+    });
+
+    /* A crônica é do mapa, mas aparece na grade: quando o mestre registra
+       um momento, o calendário precisa redesenhar para mostrar o selo. */
+    Sincronia.aoMudar('mapa', function () {
+      if (pronto) { renderGrade(); renderDetalhe(); }
+    });
     Interface.quandoIdentidadeMudar(function () { renderDetalhe(); });
 
     Tema.aoMudar(function () { renderHoje(); renderRelogioReal(); });

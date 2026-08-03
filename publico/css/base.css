@@ -353,6 +353,9 @@ input[type="checkbox"] { accent-color: var(--realce); }
   padding: 22px 24px;
 }
 
+/* O boletim lista várias linhas de guerra — cabe mais largo. */
+.modal.largo { max-width: 620px; }
+
 .modal h2 { font-size: 19px; margin-bottom: 4px; }
 .modal .subtitulo { color: var(--tinta-fraca); font-size: 12.5px; margin-bottom: 18px; }
 .modal .rodape { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }

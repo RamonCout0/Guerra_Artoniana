@@ -563,3 +563,184 @@
   font-weight: 700;
   text-align: center;
 }
+
+/* ==========================================================
+   A CRÔNICA VISTA DO CALENDÁRIO
+   O dia em que a guerra virou ganha um selo na grade.
+   ========================================================== */
+
+.dia.tem-momento { box-shadow: inset 0 -3px 0 var(--ouro); }
+
+.marca-momento {
+  position: absolute;
+  top: 3px;
+  left: 4px;
+  font-size: 10px;
+  line-height: 1;
+  opacity: .85;
+  pointer-events: none;
+}
+
+.momentos-do-dia { border-top: 1px solid var(--borda); padding-top: 14px; }
+
+.momento-do-dia {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  background: var(--fundo-painel-2);
+  border-radius: var(--raio-p);
+  border-left: 3px solid var(--ouro);
+  margin-bottom: 6px;
+}
+
+.momento-selo { flex-shrink: 0; font-size: 13px; }
+
+.momento-rotulo {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--tinta);
+}
+
+/* ==========================================================
+   SESSÕES DE JOGO
+   ========================================================== */
+
+.lista-sessoes { display: flex; flex-direction: column; gap: 3px; }
+
+.item-sessao {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 7px 9px;
+  background: none;
+  border: none;
+  border-radius: var(--raio-p);
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+  transition: background 140ms;
+}
+
+.item-sessao:hover { background: var(--fundo-painel-2); }
+
+.sessao-numero {
+  width: 24px; height: 24px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--realce);
+  color: #fff;
+  font-family: var(--fonte-titulo);
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+.sessao-corpo { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+
+.sessao-nome {
+  font-size: 12.5px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sessao-corpo .discreto { font-size: 10.5px; }
+
+.sessao-atalho {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  margin-bottom: 5px;
+  background: var(--fundo-painel-2);
+  border: none;
+  border-left: 3px solid var(--realce);
+  border-radius: 0 var(--raio-p) var(--raio-p) 0;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+  font-size: 12.5px;
+}
+
+.sessao-atalho:hover { background: var(--fundo-campo); }
+
+/* ==========================================================
+   BUSCA NO DIÁRIO
+   ========================================================== */
+
+.busca-diario { margin-top: 14px; }
+
+.busca-diario input {
+  width: 100%;
+  padding: 8px 11px;
+  border: 1px solid var(--borda);
+  border-radius: var(--raio-p);
+  background: var(--fundo-campo);
+  color: var(--tinta);
+  font: inherit;
+  font-size: 12.5px;
+}
+
+.busca-diario .resultados-busca {
+  position: absolute;
+  z-index: 30;
+  left: 0; right: 0;
+  max-height: 320px;
+  overflow-y: auto;
+  margin-top: 4px;
+  background: var(--fundo-painel);
+  border: 1px solid var(--borda);
+  border-radius: var(--raio-p);
+  box-shadow: var(--sombra-forte);
+}
+
+.busca-diario .resultados-busca:empty { display: none; }
+
+.resultado-diario {
+  display: block;
+  width: 100%;
+  padding: 9px 11px;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--borda);
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+
+.resultado-diario:last-child { border-bottom: none; }
+.resultado-diario:hover { background: var(--fundo-painel-2); }
+
+.resultado-quando {
+  display: block;
+  font-family: var(--fonte-titulo);
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--realce);
+}
+
+.resultado-quem {
+  display: block;
+  font-size: 10.5px;
+  color: var(--tinta-fraca);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+
+.resultado-trecho {
+  display: block;
+  margin-top: 3px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--tinta-suave);
+}
+
+.vazio.pequeno { padding: 12px; font-size: 11.5px; }

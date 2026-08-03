@@ -91,6 +91,7 @@ var Sincronia = (function () {
     pendente.mapa = null;
     pendente.calendario = null;
     pendente.substituirNotas = false;
+    pendente.substituirMarcacoes = false;
   }
 
   /* ---------------- ciclo de vida ---------------- */
@@ -230,6 +231,7 @@ var Sincronia = (function () {
     if (pendente.mapa) carga.mapa = pendente.mapa;
     if (pendente.calendario) carga.calendario = pendente.calendario;
     if (pendente.substituirNotas) carga.substituirNotas = true;
+    if (pendente.substituirMarcacoes) carga.substituirMarcacoes = true;
     limparPendente();
     gravando = true;
 
@@ -262,8 +264,12 @@ var Sincronia = (function () {
       });
   }
 
-  function salvarMapa(dados) {
+  /* opcoes.substituirMarcacoes troca também as marcações dos jogadores —
+     só a restauração de backup faz isso. No dia a dia elas ficam com o
+     servidor, como as notas do diário. */
+  function salvarMapa(dados, opcoes) {
     pendente.mapa = dados;
+    if (opcoes && opcoes.substituirMarcacoes) pendente.substituirMarcacoes = true;
     if (!estado.online) { gravarLocal(); return; }
     agendarGravacao();
   }
@@ -308,6 +314,49 @@ var Sincronia = (function () {
     });
   }
 
+  /* As marcações têm porta própria, como o diário: é a outra coisa que um
+     jogador grava. Vai direto, sem passar pelo agrupamento do mestre. */
+  function salvarMarcacao(marcacao, autor) {
+    if (!estado.online) {
+      var local = Armazenamento.ler('mapa', null);
+      if (!local) return Promise.reject(new Error('Nada salvo ainda.'));
+      if (!Array.isArray(local.marcacoes)) local.marcacoes = [];
+      var achou = false;
+      local.marcacoes = local.marcacoes.map(function (m) {
+        if (m.id !== marcacao.id) return m;
+        achou = true;
+        return marcacao;
+      });
+      if (!achou) local.marcacoes.push(marcacao);
+      Armazenamento.gravar('mapa', local);
+      return Promise.resolve({ marcacao: marcacao });
+    }
+    return pedir('/api/marcacao', {
+      method: 'POST',
+      body: JSON.stringify({ acao: 'salvar', autor: autor, marcacao: marcacao })
+    }).then(function (r) {
+      estado.atualizadoEm = r.atualizadoEm || estado.atualizadoEm;
+      return r;
+    });
+  }
+
+  function apagarMarcacao(id, autor) {
+    if (!estado.online) {
+      var local = Armazenamento.ler('mapa', null);
+      if (!local || !Array.isArray(local.marcacoes)) return Promise.resolve({});
+      local.marcacoes = local.marcacoes.filter(function (m) { return m.id !== id; });
+      Armazenamento.gravar('mapa', local);
+      return Promise.resolve({});
+    }
+    return pedir('/api/marcacao', {
+      method: 'POST',
+      body: JSON.stringify({ acao: 'apagar', autor: autor, id: id })
+    }).then(function (r) {
+      estado.atualizadoEm = r.atualizadoEm || estado.atualizadoEm;
+      return r;
+    });
+  }
+
   function reiniciar(alvo) {
     if (!estado.online) {
       if (alvo === 'mapa' || alvo === 'tudo') Armazenamento.apagar('mapa');
@@ -327,6 +376,7 @@ var Sincronia = (function () {
       if (pendente.mapa) carga.mapa = pendente.mapa;
       if (pendente.calendario) carga.calendario = pendente.calendario;
       if (pendente.substituirNotas) carga.substituirNotas = true;
+    if (pendente.substituirMarcacoes) carga.substituirMarcacoes = true;
       try {
         navigator.sendBeacon('/api/estado',
           new Blob([JSON.stringify(carga)], { type: 'application/json' }));
@@ -341,6 +391,8 @@ var Sincronia = (function () {
     salvarMapa: salvarMapa,
     salvarCalendario: salvarCalendario,
     salvarEntradaDiario: salvarEntradaDiario,
+    salvarMarcacao: salvarMarcacao,
+    apagarMarcacao: apagarMarcacao,
     gravarAgora: gravarAgora,
     reiniciar: reiniciar,
     aoMudar: aoMudar,

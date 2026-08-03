@@ -77,6 +77,20 @@
         <div class="hoje" id="painel-hoje"></div>
         <div class="so-mestre controles-tempo" id="controles-tempo" data-visivel="nao"></div>
         <div class="relogio-real" id="relogio-real"></div>
+
+        <div class="caixa-busca busca-diario">
+          <input type="search" id="diario-busca" autocomplete="off"
+                 placeholder="Procurar no diário…">
+          <div class="resultados-busca" id="diario-resultados"></div>
+        </div>
+
+        <div class="painel-titulo" style="padding:18px 0 6px">
+          <span>Sessões</span>
+          <button class="botao pequeno fantasma so-mestre" id="sessao-nova"
+                  data-visivel="nao" title="Registrar uma sessão de jogo">+</button>
+        </div>
+        <div class="lista-sessoes" id="lista-sessoes"></div>
+
         <div class="painel-titulo" style="padding:18px 0 6px">Meses do ano</div>
         <div class="lista-meses" id="lista-meses"></div>
       </aside>
@@ -221,6 +235,131 @@
     <div class="rodape">
       <button class="botao fantasma" id="cancelar-login">Cancelar</button>
       <button class="botao primario" id="confirmar-login">Entrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ Modal: marcação do mapa ============ -->
+<div class="fundo-modal" id="modal-marcacao" hidden>
+  <div class="modal">
+    <h2>Marcação no mapa</h2>
+    <p class="subtitulo" id="marcacao-autor"></p>
+
+    <label class="campo"><span>O que é isto?</span>
+      <input type="text" id="marcacao-rotulo" maxlength="120"
+             placeholder="Ex.: raio da explosão, cerco de Valkaria, acampamento"></label>
+
+    <div id="marcacao-campo-tamanho" hidden>
+      <label class="campo"><span>Raio, em quilômetros</span>
+        <input type="number" id="marcacao-raio" min="1" max="20000" step="1"></label>
+      <div class="discreto">A régua do mapa mede na mesma unidade — 60 km é um dia de viagem.</div>
+    </div>
+
+    <div id="marcacao-campo-largura" hidden>
+      <div class="linha-campos">
+        <label class="campo"><span>Largura (km)</span>
+          <input type="number" id="marcacao-largura" min="1" max="20000" step="1"></label>
+        <label class="campo"><span>Altura (km)</span>
+          <input type="number" id="marcacao-altura" min="1" max="20000" step="1"></label>
+      </div>
+    </div>
+
+    <label class="campo" style="margin-top:12px"><span>Cor</span>
+      <div class="paleta-token" id="marcacao-paleta"></div>
+    </label>
+
+    <div class="rodape">
+      <button class="botao perigo" id="marcacao-apagar">Apagar</button>
+      <div class="espaco" style="flex:1"></div>
+      <button class="botao fantasma" id="marcacao-cancelar">Cancelar</button>
+      <button class="botao primario" id="marcacao-salvar">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ Modal: brasão do grupo ============ -->
+<div class="fundo-modal" id="modal-brasao" hidden>
+  <div class="modal">
+    <h2>O brasão do grupo</h2>
+    <p class="subtitulo">O mesmo desenhista que faz os escudos das nações do Atlas serve à
+      mesa. Escreva o brasão na linguagem heráldica e ele aparece ao lado.</p>
+
+    <div class="editor-brasao">
+      <div class="brasao-previa" id="brasao-previa"></div>
+      <div class="editor-brasao-campos">
+        <label class="campo"><span>Nome do grupo</span>
+          <input type="text" id="brasao-nome" maxlength="60"
+                 placeholder="Ex.: Os Lobos de Deheon"></label>
+        <label class="campo"><span>O brasão</span>
+          <textarea id="brasao-texto" rows="3" maxlength="240"
+                    placeholder="Ex.: de vermelho uma torre de ouro"></textarea></label>
+        <div class="discreto">Esmaltes: ouro, prata, vermelho, azul, verde, negro, púrpura.
+          Partições: cortado, partido, talhado, gironado.</div>
+        <div class="grupo-botoes" style="margin-top:8px;flex-wrap:wrap">
+          <button class="botao pequeno fantasma" data-brasao-exemplo="de vermelho uma torre de ouro">torre</button>
+          <button class="botao pequeno fantasma" data-brasao-exemplo="de azul uma espada de prata">espada</button>
+          <button class="botao pequeno fantasma" data-brasao-exemplo="cortado de ouro e negro">cortado</button>
+          <button class="botao pequeno fantasma" data-brasao-exemplo="gironado de azul e prata">gironado</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="rodape">
+      <button class="botao perigo" id="brasao-limpar">Tirar o brasão</button>
+      <div class="espaco" style="flex:1"></div>
+      <button class="botao fantasma" id="brasao-cancelar">Cancelar</button>
+      <button class="botao primario" id="brasao-salvar">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ Modal: boletim da guerra ============ -->
+<div class="fundo-modal" id="modal-boletim" hidden>
+  <div class="modal largo">
+    <h2>Boletim da guerra</h2>
+    <p class="subtitulo" id="boletim-periodo"></p>
+    <div id="boletim-corpo"></div>
+    <div class="rodape">
+      <button class="botao primario" id="boletim-fechar">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ Modal: sessão de jogo ============ -->
+<div class="fundo-modal" id="modal-sessao" hidden>
+  <div class="modal">
+    <h2 id="sessao-titulo-modal">Sessão de jogo</h2>
+    <p class="subtitulo">O encontro de verdade, na mesa. Fica ligado aos dias de Arton que
+      vocês jogaram — é o que a mesa consulta quando alguém falta.</p>
+
+    <div class="linha-campos">
+      <label class="campo"><span>Número</span>
+        <input type="number" id="sessao-numero" min="1" step="1"></label>
+      <label class="campo"><span>Data real</span>
+        <input type="date" id="sessao-data-real"></label>
+    </div>
+
+    <label class="campo"><span>Título</span>
+      <input type="text" id="sessao-titulo" maxlength="120"
+             placeholder="Ex.: A queda da ponte de Tapista"></label>
+
+    <div class="linha-campos">
+      <label class="campo"><span>De (dia de Arton)</span>
+        <input type="text" id="sessao-de" placeholder="1410-3-5" maxlength="20"></label>
+      <label class="campo"><span>Até</span>
+        <input type="text" id="sessao-ate" placeholder="1410-3-9" maxlength="20"></label>
+    </div>
+
+    <label class="campo"><span>Resumo</span>
+      <textarea id="sessao-resumo" rows="5" maxlength="4000"
+                placeholder="O que aconteceu nesta sessão…"></textarea></label>
+
+    <div class="erro" id="sessao-erro"></div>
+    <div class="rodape">
+      <button class="botao perigo" id="sessao-apagar">Apagar</button>
+      <div class="espaco" style="flex:1"></div>
+      <button class="botao fantasma" id="sessao-cancelar">Cancelar</button>
+      <button class="botao primario" id="sessao-salvar">Salvar</button>
     </div>
   </div>
 </div>

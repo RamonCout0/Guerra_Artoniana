@@ -176,6 +176,73 @@ function mesclarCalendario(atual, novo, substituirNotas) {
   return saida;
 }
 
+/* Mesma história do lado do mapa: as marcações dos jogadores entram por
+   /api/marcacao e o mestre não pode apagá-las sem querer ao salvar as
+   fronteiras. As dele ele grava à vontade; as dos heróis ficam com o
+   servidor. Para moderar, o mestre apaga uma a uma pela porta própria. */
+function mesclarMapa(atual, novo, substituirMarcacoes) {
+  if (!novo || typeof novo !== 'object') return novo;
+  var saida = {};
+  Object.keys(novo).forEach(function (chave) { saida[chave] = novo[chave]; });
+  if (substituirMarcacoes) return saida;
+
+  var doMestre = (Array.isArray(novo.marcacoes) ? novo.marcacoes : [])
+    .filter(function (m) { return m && m.autor === 'mestre'; });
+  var dosHerois = (atual && Array.isArray(atual.marcacoes) ? atual.marcacoes : [])
+    .filter(function (m) { return m && m.autor !== 'mestre'; });
+
+  saida.marcacoes = doMestre.concat(dosHerois);
+  return saida;
+}
+
+/* ------------------------------------------------------------------
+   Marcações do mapa — círculo, retângulo e alfinete.
+   Guardam o raio em quilômetros, não em pixels: o alcance de uma
+   explosão continua valendo o mesmo depois de qualquer zoom.
+   ------------------------------------------------------------------ */
+
+var TIPOS_MARCACAO = { circulo: true, retangulo: true, alfinete: true };
+var LIMITE_MARCACOES = 500;
+
+function numeroValido(v, minimo, maximo) {
+  var n = Number(v);
+  return isFinite(n) && n >= minimo && n <= maximo;
+}
+
+/* Devolve a marcação limpa, ou uma string dizendo o que está errado.
+   Nada do que chega do cliente entra no estado sem passar por aqui. */
+function limparMarcacao(cru, autor) {
+  if (!cru || typeof cru !== 'object') return 'Marcação inválida.';
+  if (!TIPOS_MARCACAO[cru.tipo]) return 'Tipo de marcação desconhecido.';
+  if (!numeroValido(cru.x, -10000, 10000) || !numeroValido(cru.y, -10000, 10000)) {
+    return 'Posição fora do mapa.';
+  }
+
+  var limpa = {
+    id: String(cru.id || '').slice(0, 40) || ('mc' + Date.now().toString(36)),
+    tipo: cru.tipo,
+    x: Math.round(Number(cru.x) * 100) / 100,
+    y: Math.round(Number(cru.y) * 100) / 100,
+    rotulo: String(cru.rotulo || '').slice(0, 120),
+    cor: /^#[0-9a-fA-F]{6}$/.test(String(cru.cor)) ? String(cru.cor) : '#d22833',
+    autor: autor,
+    criadoEm: Number(cru.criadoEm) || Date.now()
+  };
+
+  if (cru.tipo === 'circulo') {
+    if (!numeroValido(cru.raioKm, 1, 20000)) return 'Raio fora do razoável.';
+    limpa.raioKm = Math.round(Number(cru.raioKm));
+  } else if (cru.tipo === 'retangulo') {
+    if (!numeroValido(cru.larguraKm, 1, 20000) || !numeroValido(cru.alturaKm, 1, 20000)) {
+      return 'Tamanho fora do razoável.';
+    }
+    limpa.larguraKm = Math.round(Number(cru.larguraKm));
+    limpa.alturaKm = Math.round(Number(cru.alturaKm));
+  }
+
+  return limpa;
+}
+
 /* ------------------------------------------------------------------
    Sessão do mestre (cookie assinado)
    ------------------------------------------------------------------ */
@@ -335,6 +402,19 @@ function registrarEscrita(ip) {
   if (escritas[ip]) escritas[ip].contagem++;
   if (Object.keys(escritas).length > 5000) limparVencidos(escritas, 60 * 1000);
   if (Object.keys(escritas).length > 5000) escritas = {};
+}
+
+/* Quem pode assinar o quê. Como não há senha por jogador, quem tem o link
+   assina como qualquer herói da lista — é uma mesa de amigos, não um fórum
+   aberto. O que não se pode é forjar o mestre nem inventar um herói.
+   Devolve null quando está tudo bem, ou o motivo da recusa. */
+function conferirAutor(autor, ehOMestre) {
+  if (autor === 'mestre') {
+    return ehOMestre ? null : 'Só o mestre escreve como mestre.';
+  }
+  var existe = estado.mapa && Array.isArray(estado.mapa.tokens) &&
+    estado.mapa.tokens.filter(function (t) { return t.id === autor && t.nome; })[0];
+  return existe ? null : 'Esse herói não existe no grupo.';
 }
 
 /* ------------------------------------------------------------------
@@ -638,7 +718,11 @@ function tratarApi(req, res, rota, consulta) {
         });
       }
 
-      if (corpo.mapa !== undefined) estado.mapa = corpo.mapa;
+      if (corpo.mapa !== undefined) {
+        estado.mapa = mesclarMapa(
+          estado.mapa, corpo.mapa, corpo.substituirMarcacoes === true
+        );
+      }
       if (corpo.calendario !== undefined) {
         estado.calendario = mesclarCalendario(
           estado.calendario, corpo.calendario, corpo.substituirNotas === true
@@ -677,15 +761,8 @@ function tratarApi(req, res, rota, consulta) {
         return responderJson(res, 400, { erro: 'Texto longo demais (máximo 4.000 caracteres).' });
       }
 
-      if (autor === 'mestre') {
-        if (!mestre) return responderJson(res, 403, { erro: 'Só o mestre escreve como mestre.' });
-      } else {
-        var heroi = estado.mapa && Array.isArray(estado.mapa.tokens) &&
-          estado.mapa.tokens.filter(function (t) { return t.id === autor && t.nome; })[0];
-        if (!heroi) {
-          return responderJson(res, 403, { erro: 'Esse herói não existe no grupo.' });
-        }
-      }
+      var recusa = conferirAutor(autor, mestre);
+      if (recusa) return responderJson(res, 403, { erro: recusa });
 
       if (!estado.calendario) estado.calendario = { versao: 1, notas: {} };
       if (!estado.calendario.notas) estado.calendario.notas = {};
@@ -703,6 +780,79 @@ function tratarApi(req, res, rota, consulta) {
       registrarMudancaDoDiario();
       registrarEscrita(ipDiario);
       responderJson(res, 200, { ok: true, atualizadoEm: estado.atualizadoEm });
+    });
+  }
+
+  /* A segunda porta estreita, irmã do diário: o jogador marca o mapa —
+     o raio de uma explosão, o cerco que viu, um alfinete de "aqui" — sem
+     poder tocar em fronteira nenhuma. O mestre apaga o que quiser. */
+  if (rota === '/api/marcacao' && req.method === 'POST') {
+    if (!entrou) return semSenha();
+    var ipMarca = ipDoPedido(req);
+    if (!podeEscreverDiario(ipMarca)) {
+      return responderJson(res, 429, { erro: 'Calma. Espere um pouco antes de marcar de novo.' });
+    }
+    return lerCorpo(req, function (erro, corpo) {
+      if (erro) return recusarCorpo(res, erro, 'Requisição inválida.');
+
+      var autorMarca = String((corpo && corpo.autor) || '');
+      var acao = String((corpo && corpo.acao) || 'salvar');
+
+      if (!estado.mapa) {
+        return responderJson(res, 409, {
+          erro: 'O mestre ainda não montou o mapa.'
+        });
+      }
+      if (!Array.isArray(estado.mapa.marcacoes)) estado.mapa.marcacoes = [];
+
+      if (acao === 'apagar') {
+        var idApagar = String((corpo && corpo.id) || '');
+        var alvo = estado.mapa.marcacoes.filter(function (m) { return m.id === idApagar; })[0];
+        if (!alvo) return responderJson(res, 404, { erro: 'Essa marcação não existe mais.' });
+        // o mestre modera tudo; o jogador só tira o que assinou
+        if (!mestre && alvo.autor !== autorMarca) {
+          return responderJson(res, 403, { erro: 'Essa marcação é de outra pessoa.' });
+        }
+        var recusaApagar = conferirAutor(autorMarca, mestre);
+        if (!mestre && recusaApagar) return responderJson(res, 403, { erro: recusaApagar });
+
+        estado.mapa.marcacoes = estado.mapa.marcacoes.filter(function (m) {
+          return m.id !== idApagar;
+        });
+        registrarMudancaDoDiario();
+        registrarEscrita(ipMarca);
+        return responderJson(res, 200, { ok: true, atualizadoEm: estado.atualizadoEm });
+      }
+
+      var recusaAutor = conferirAutor(autorMarca, mestre);
+      if (recusaAutor) return responderJson(res, 403, { erro: recusaAutor });
+
+      var limpa = limparMarcacao(corpo && corpo.marcacao, autorMarca);
+      if (typeof limpa === 'string') return responderJson(res, 400, { erro: limpa });
+
+      var antiga = estado.mapa.marcacoes.filter(function (m) { return m.id === limpa.id; })[0];
+      if (antiga) {
+        if (!mestre && antiga.autor !== autorMarca) {
+          return responderJson(res, 403, { erro: 'Essa marcação é de outra pessoa.' });
+        }
+        limpa.autor = antiga.autor;   // editar não muda de dono
+        estado.mapa.marcacoes = estado.mapa.marcacoes.map(function (m) {
+          return m.id === limpa.id ? limpa : m;
+        });
+      } else {
+        if (estado.mapa.marcacoes.length >= LIMITE_MARCACOES) {
+          return responderJson(res, 409, {
+            erro: 'O mapa já tem marcações demais. Apague algumas antes.'
+          });
+        }
+        estado.mapa.marcacoes.push(limpa);
+      }
+
+      registrarMudancaDoDiario();
+      registrarEscrita(ipMarca);
+      return responderJson(res, 200, {
+        ok: true, marcacao: limpa, atualizadoEm: estado.atualizadoEm
+      });
     });
   }
 

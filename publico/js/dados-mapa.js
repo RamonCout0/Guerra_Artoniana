@@ -66,10 +66,12 @@ var DadosMapa = (function () {
       governo: 'Autocracia militar',
       regente: 'Rainha-Imperatriz Shivara I (de fato, Hermann Von Krauser nas sombras)',
       populacao: '≈ 5.000.000',
-      notas: 'Segundo país mais poderoso da coalizão. Cultura militarista, autocrática e ' +
-        'intolerante — incompatível com os ideais de Shivara. É daqui que parte o golpe ' +
-        'purista que leva à Guerra Artoniana. Hermann Von Krauser, exímio estrategista ' +
-        'desaparecido da vida pública, age nas sombras para tomar o poder.',
+      notas: 'Segundo país mais poderoso da coalizão, atrás só de Deheon. Cultura ' +
+        'militarista, autocrática e intolerante — incompatível com os ideais de Shivara. ' +
+        'É daqui que parte o golpe purista que leva à Guerra Artoniana. Hermann Von ' +
+        'Krauser, exímio estrategista desaparecido da vida pública, age nas sombras para ' +
+        'tomar o poder. A campanha abre no feudo de Karst, na antiga região de Svalas, ' +
+        'sob domínio yudennachiano há mais de três séculos.',
       rotulo: { x: 522, y: 486 },
       poligono: [[492,444],[540,432],[578,446],[592,478],[578,514],[547,536],[510,541],
                  [488,519],[482,478]]
@@ -183,8 +185,9 @@ var DadosMapa = (function () {
       governo: 'Feudos independentes',
       regente: 'Rainha-Imperatriz Shivara I (por ascendência)',
       populacao: '≈ 1.850.000',
-      notas: 'Terra natal de Shivara. Conjunto de feudos autônomos — é entre feudos como ' +
-        'estes que começa a campanha da Guerra Artoniana.',
+      notas: 'Terra natal de Shivara, que foi Rainha de Trebuck antes de cingir a coroa ' +
+        'imperial. Conjunto de feudos autônomos. Sem a liderança dela, Trebuck acaba se ' +
+        'fragmentando em feudos menores durante a guerra.',
       rotulo: { x: 717, y: 311 },
       poligono: [[687,261],[731,254],[763,272],[766,306],[742,331],[704,333],[681,308],
                  [674,281]]
@@ -193,14 +196,22 @@ var DadosMapa = (function () {
       id: 'callistia',
       brasao: 'de azul uma faixa ondada de prata',
       nome: 'Callistia',
-      nomeOficial: 'Bacia de Callistia',
+      nomeOficial: 'Reino de Callistia',
       categoria: 'reinado',
       cor: '#4a727f',
       capital: 'crisandir',
-      governo: 'Nobreza local',
-      regente: 'Casas nobres da bacia',
+      governo: 'Monarquia com forte nobreza',
+      regente: 'Casas nobres de Callistia',
       populacao: '—',
-      notas: 'Região fértil ao redor do curso do Rio dos Deuses.',
+      /* Em 1410 Callistia ainda é reino. O Atlas de Arton a descreve como
+         "Bacia de Callistia", já incorporada às Repúblicas Livres — mas o
+         Atlas se passa em 1420, e essa dissolução vem depois: a herdeira
+         Amina Drako costura o acordo que dissolve o reino e o leva para
+         Sambúrdia, que forma as "atuais" Repúblicas Livres engolindo
+         Callistia e Nova Ghondriann. Aqui vale o reino, não a bacia. */
+      notas: 'Reino fértil ao redor do curso do Rio dos Deuses. Antigo desafeto de ' +
+        'Namalkah, cuja fronteira a nordeste com a bacia é mais convenção histórica ' +
+        'do que geográfica.',
       rotulo: { x: 583, y: 333 },
       poligono: [[557,306],[596,298],[621,314],[619,346],[594,363],[565,356],[549,330]]
     },

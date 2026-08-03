@@ -37,9 +37,14 @@ var MapaArton = (function () {
   var categoriasOcultas = { mar: true };
   var vista = { x: RECORTE.x, y: RECORTE.y, w: RECORTE.largura, h: RECORTE.altura };
 
+  var mostrarMarcacoes = true;
+  var mostrarRastro = false;
+
   var raiz, svg, palco, defsTokens, defsGuerra;
   var camadaTerritorios, camadaCidades, camadaRotulos, camadaTokens, camadaEdicao;
+  var camadaMarcacoes, camadaRastro;
   var rascunho = [], regua = [], arrasto = null;
+  var marcandoAgora = null;      // { tipo, inicio: [x,y], atual: [x,y] } enquanto arrasta
   var dedos = {};               // ponteiros ativos, para a pinça
   var pinca = null;             // { distancia, meio }
   var montado = false;
@@ -127,6 +132,7 @@ var MapaArton = (function () {
           '<span>O grupo</span>' +
           '<span class="discreto so-mestre" data-visivel="nao">clique para posicionar</span>' +
         '</div>' +
+        '<div class="estandarte" id="estandarte-grupo"></div>' +
         '<div class="tira-tokens" id="tira-tokens"></div>' +
       '</div>' +
       '<div class="lateral-cabecalho">' +
@@ -171,6 +177,8 @@ var MapaArton = (function () {
           '<rect id="veu-noturno"/>' +
           '<g id="camada-territorios" clip-path="url(#recorte-terra)"></g>' +
           '<g id="camada-cidades"></g>' +
+          '<g id="camada-rastro"></g>' +
+          '<g id="camada-marcacoes"></g>' +
           '<g id="camada-rotulos"></g>' +
           '<g id="camada-edicao"></g>' +
           '<g id="camada-tokens"></g>' +
@@ -187,6 +195,16 @@ var MapaArton = (function () {
           '<button class="ferramenta ativa" data-ferramenta="selecionar" title="Navegar (V)">🖐️</button>' +
           '<button class="ferramenta" data-ferramenta="regua" title="Medir distância (R)">📏</button>' +
         '</div>' +
+        /* Marcar o mapa não é privilégio do mestre: é o que um jogador
+           pode desenhar, do mesmo jeito que escreve o próprio diário. */
+        '<div class="grupo-ferramentas" id="mapa-ferramentas-marcar">' +
+          '<button class="ferramenta" data-ferramenta="circulo" ' +
+                  'title="Círculo — raio de explosão, alcance, área (A)">🔴</button>' +
+          '<button class="ferramenta" data-ferramenta="retangulo" ' +
+                  'title="Retângulo — uma faixa de terra, um cerco (X)">▭</button>' +
+          '<button class="ferramenta" data-ferramenta="alfinete" ' +
+                  'title="Alfinete — apontar um lugar (P)">📌</button>' +
+        '</div>' +
         '<div class="grupo-ferramentas so-mestre" id="mapa-ferramentas-mestre" data-visivel="nao">' +
           '<button class="ferramenta" data-ferramenta="territorio" title="Novo território (T)">✏️</button>' +
           '<button class="ferramenta" data-ferramenta="cidade" title="Nova cidade (C)">📍</button>' +
@@ -194,6 +212,8 @@ var MapaArton = (function () {
         '</div>' +
         '<div class="grupo-ferramentas">' +
           '<button class="ferramenta ativa" id="mapa-rotulos" title="Rótulos (L)">🏷️</button>' +
+          '<button class="ferramenta" id="mapa-marcacoes" title="Mostrar marcações (M)">🎯</button>' +
+          '<button class="ferramenta" id="mapa-rastro" title="Rastro do grupo (J)">👣</button>' +
           '<button class="ferramenta" id="mapa-enquadrar" title="Enquadrar (0)">⤢</button>' +
         '</div>' +
       '</div>' +
@@ -239,6 +259,8 @@ var MapaArton = (function () {
     camadaRotulos = $('#camada-rotulos');
     camadaTokens = $('#camada-tokens');
     camadaEdicao = $('#camada-edicao');
+    camadaMarcacoes = $('#camada-marcacoes');
+    camadaRastro = $('#camada-rastro');
 
     var r = $('#recorte-rect');
     r.setAttribute('x', RECORTE.x); r.setAttribute('y', RECORTE.y);
@@ -258,6 +280,14 @@ var MapaArton = (function () {
     ligarRecortador();
 
     ligarGavetas();
+    ligarModalMarcacao();
+    ligarModalBrasao();
+    var fecharBoletim = $('#boletim-fechar');
+    if (fecharBoletim) {
+      fecharBoletim.addEventListener('click', function () {
+        Interface.fecharModal('modal-boletim');
+      });
+    }
     Interface.pintarPapel();
     montado = true;
   }
@@ -385,6 +415,29 @@ var MapaArton = (function () {
     $$('.texto-regua', svg).forEach(function (t) {
       t.setAttribute('font-size', (10 * k).toFixed(2));
       t.setAttribute('stroke-width', (3.4 * k).toFixed(2));
+    });
+
+    /* As formas têm tamanho no mundo, então só o traço precisa acompanhar
+       o zoom — o raio em quilômetros continua o mesmo. */
+    $$('.marcacao-forma, .marcacao-previa', svg).forEach(function (f) {
+      f.setAttribute('stroke-width', (1.6 * k).toFixed(2));
+    });
+    /* O alfinete é o contrário: é um ícone, e tem de ficar do mesmo
+       tamanho na tela em qualquer aproximação. */
+    $$('.marcacao-alfinete', svg).forEach(function (a) {
+      a.setAttribute('r', (7 / porPixelEd).toFixed(2));
+      a.setAttribute('stroke-width', (2 / porPixelEd).toFixed(2));
+    });
+    $$('.rotulo-marcacao', svg).forEach(function (t) {
+      t.setAttribute('font-size', (7.5 * k).toFixed(2));
+      t.setAttribute('stroke-width', (2.6 * k).toFixed(2));
+    });
+    $$('.linha-rastro', svg).forEach(function (l) {
+      l.setAttribute('stroke-width', (1.4 * k).toFixed(2));
+      l.setAttribute('stroke-dasharray', (3 * k).toFixed(2) + ' ' + (2.4 * k).toFixed(2));
+    });
+    $$('.passo-rastro', svg).forEach(function (p) {
+      p.setAttribute('r', (2.4 * k).toFixed(2));
     });
 
     atualizarTamanhosTokens();
@@ -551,6 +604,13 @@ var MapaArton = (function () {
       data: data,
       rotulo: (titulo || '').trim() || CalendarioArton.formatarColoquial(data),
       criadoEm: Date.now(),
+      /* Onde o grupo estava neste dia. É só isto que o rastro precisa —
+         guardar a ficha inteira do herói (com a foto) pesaria à toa. */
+      tokens: (dados.tokens || [])
+        .filter(function (t) { return t.x !== null && t.x !== undefined && t.nome; })
+        .map(function (t) {
+          return { id: t.id, nome: t.nome, cor: t.cor, x: t.x, y: t.y };
+        }),
       nacoes: dados.nacoes.map(function (n) {
         return {
           id: n.id, nome: n.nome, cor: n.cor, categoria: n.categoria,
@@ -638,6 +698,8 @@ var MapaArton = (function () {
     var html = '<div class="cronica-inicio">' +
       (mestre ? '<button class="botao pequeno primario" id="cronica-registrar" ' +
                 'title="Guarda o mapa de hoje na linha do tempo">📸 Registrar momento</button>' : '') +
+      (lista.length ? '<button class="botao pequeno" id="cronica-boletim" ' +
+                'title="O que mudou desde o último momento registrado">📜 Boletim</button>' : '') +
       '<span class="cronica-titulo">Crônica da guerra</span></div>';
 
     html += '<div class="cronica-trilho">';
@@ -667,6 +729,11 @@ var MapaArton = (function () {
     var botaoRegistrar = $('#cronica-registrar', caixa);
     if (botaoRegistrar) botaoRegistrar.addEventListener('click', registrarMomento);
 
+    var botaoBoletim = $('#cronica-boletim', caixa);
+    if (botaoBoletim) botaoBoletim.addEventListener('click', function () {
+      abrirBoletim(momentoVisto);   // vendo o passado, compara com o anterior
+    });
+
     $$('[data-momento]', caixa).forEach(function (b) {
       b.addEventListener('click', function () {
         var id = b.getAttribute('data-momento');
@@ -685,9 +752,12 @@ var MapaArton = (function () {
           'O mapa como estava em ' + esc(CalendarioArton.formatarColoquial(m.data)) +
           ' — nada aqui pode ser alterado.</span>' +
           '<span class="espaco" style="flex:1"></span>' +
+          '<button class="botao pequeno" data-boletim>📜 O que mudou</button>' +
           (ehMestre() ? '<button class="botao pequeno" data-restaurar>↩ Trazer para hoje</button>' +
                         '<button class="botao pequeno perigo" data-apagar-momento>Apagar</button>' : '') +
           '<button class="botao pequeno primario" data-presente>Voltar ao presente</button>';
+        var bol = $('[data-boletim]', tarja);
+        if (bol) bol.addEventListener('click', function () { abrirBoletim(m.id); });
         var r = $('[data-restaurar]', tarja);
         if (r) r.addEventListener('click', function () { restaurarMomento(m.id); });
         var a = $('[data-apagar-momento]', tarja);
@@ -695,6 +765,561 @@ var MapaArton = (function () {
         $('[data-presente]', tarja).addEventListener('click', voltarAoPresente);
       }
     }
+  }
+
+  /* ---------------- o boletim da guerra ----------------
+     Dois momentos da crônica, lado a lado, viram texto: quem tomou o
+     quê, quem se revoltou, quem sumiu do mapa. É a abertura de sessão
+     que o mestre teria de escrever na mão — os dados já estavam ali. */
+
+  function nomeDeNacaoNoMomento(lista, id) {
+    var achada = lista.filter(function (n) { return n.id === id; })[0];
+    return achada ? achada.nome : 'alguém';
+  }
+
+  /* Área do polígono em km², para saber se um território cresceu ou
+     encolheu de verdade ou se foi só um vértice arrastado. */
+  function areaKm2(poligono) {
+    if (!poligono || poligono.length < 3) return 0;
+    var u = Math.abs(area(poligono));
+    return u * DadosMapa.KM_POR_UNIDADE * DadosMapa.KM_POR_UNIDADE;
+  }
+
+  function boletimEntre(antes, depois) {
+    var linhas = [];
+    var listaAntes = antes.nacoes || [];
+    var listaDepois = depois.nacoes || [];
+
+    var porIdAntes = {};
+    listaAntes.forEach(function (n) { porIdAntes[n.id] = n; });
+
+    listaDepois.forEach(function (agora) {
+      var era = porIdAntes[agora.id];
+      if (!era) {
+        if (agora.visivel !== false) {
+          linhas.push({ tom: 'novo', texto: agora.nome + ' aparece no mapa.' });
+        }
+        return;
+      }
+
+      // quem manda
+      var donoAntes = era.controladoPor || null;
+      var donoDepois = agora.controladoPor || null;
+      if (donoAntes !== donoDepois) {
+        if (donoDepois) {
+          linhas.push({
+            tom: 'conquista',
+            texto: nomeDeNacaoNoMomento(listaDepois, donoDepois) + ' tomou ' + agora.nome + '.'
+          });
+        } else {
+          linhas.push({
+            tom: 'libertacao',
+            texto: agora.nome + ' se livrou do domínio de ' +
+                   nomeDeNacaoNoMomento(listaAntes, donoAntes) + '.'
+          });
+        }
+      }
+
+      // o estado da guerra
+      var guerraAntes = era.estadoGuerra || 'neutro';
+      var guerraDepois = agora.estadoGuerra || 'neutro';
+      if (guerraAntes !== guerraDepois) {
+        /* O vocabulário é o mesmo de DadosMapa.ESTADOS_GUERRA — se um
+           estado novo entrar lá e não ganhar frase aqui, o boletim ainda
+           diz o que aconteceu, usando o rótulo da própria tabela. */
+        var frase = {
+          leal: agora.nome + ' se declarou leal ao Reinado.',
+          mobilizado: agora.nome + ' mobilizou as tropas.',
+          sitiado: agora.nome + ' está sitiada.',
+          revolta: agora.nome + ' se levantou em revolta.',
+          conquistado: agora.nome + ' caiu.',
+          arrasado: agora.nome + ' foi arrasada.',
+          neutro: agora.nome + ' voltou à paz.'
+        }[guerraDepois];
+        if (!frase) {
+          var descricao = GUERRA[guerraDepois];
+          frase = descricao ? agora.nome + ': ' + descricao.rotulo + '.' : null;
+        }
+        if (frase) linhas.push({ tom: guerraDepois, texto: frase });
+      }
+
+      // fronteiras
+      var areaAntes = areaKm2(era.poligono);
+      var areaDepois = areaKm2(agora.poligono);
+      if (areaAntes > 0) {
+        var variacao = (areaDepois - areaAntes) / areaAntes;
+        if (Math.abs(variacao) >= 0.04) {
+          linhas.push({
+            tom: variacao > 0 ? 'cresceu' : 'encolheu',
+            texto: agora.nome + (variacao > 0 ? ' avançou ' : ' recuou ') +
+                   Math.abs(Math.round(variacao * 100)) + '% do próprio território (' +
+                   Math.round(Math.abs(areaDepois - areaAntes)).toLocaleString('pt-BR') + ' km²).'
+          });
+        }
+      }
+
+      // a névoa
+      if (era.conhecido === false && agora.conhecido !== false) {
+        linhas.push({ tom: 'revelado', texto: 'O grupo passou a conhecer ' + agora.nome + '.' });
+      }
+
+      if (era.visivel !== false && agora.visivel === false) {
+        linhas.push({ tom: 'sumiu', texto: agora.nome + ' saiu do mapa.' });
+      }
+    });
+
+    return linhas;
+  }
+
+  /* O momento anterior a um dado id, na ordem da crônica. */
+  function momentoAnteriorA(id) {
+    var lista = momentos();
+    for (var i = 0; i < lista.length; i++) {
+      if (lista[i].id === id) return i > 0 ? lista[i - 1] : null;
+    }
+    return null;
+  }
+
+  /* O presente, no mesmo formato de um momento, para poder comparar. */
+  function momentoDoPresente() {
+    return {
+      rotulo: 'O presente',
+      data: (typeof CalendarioJanela !== 'undefined')
+        ? CalendarioJanela.dataAtual()
+        : { ano: 1410, mes: 3, dia: 5, nimb: false },
+      nacoes: dados.nacoes
+    };
+  }
+
+  function abrirBoletim(idMomento) {
+    var lista = momentos();
+    if (!lista.length) {
+      Interface.avisar('A crônica ainda está vazia — registre um momento primeiro.');
+      return;
+    }
+
+    var depois, antes;
+    if (idMomento) {
+      depois = acharMomento(idMomento);
+      antes = momentoAnteriorA(idMomento);
+    } else {
+      depois = momentoDoPresente();
+      antes = lista[lista.length - 1];
+    }
+    if (!depois) return;
+
+    var caixa = $('#boletim-corpo');
+    var titulo = $('#boletim-periodo');
+    if (!caixa) return;
+
+    if (!antes) {
+      titulo.textContent = 'Não há um momento anterior para comparar — este é o começo da crônica.';
+      caixa.innerHTML = '<div class="vazio">O primeiro momento é o ponto de partida.<br>' +
+        'Registre outro depois que a guerra andar e o boletim aparece aqui.</div>';
+      Interface.abrirModal('modal-boletim');
+      return;
+    }
+
+    titulo.textContent = 'De ' + CalendarioArton.formatarColoquial(antes.data) +
+      ' (' + antes.rotulo + ') a ' + CalendarioArton.formatarColoquial(depois.data) +
+      ' (' + depois.rotulo + ').';
+
+    var linhas = boletimEntre(antes, depois);
+    if (!linhas.length) {
+      caixa.innerHTML = '<div class="vazio">Nada mudou no mapa entre os dois momentos.<br>' +
+        'A guerra ficou parada — ou aconteceu longe das fronteiras.</div>';
+    } else {
+      caixa.innerHTML = '<ul class="boletim-lista">' +
+        linhas.map(function (l) {
+          return '<li class="boletim-linha tom-' + esc(l.tom) + '">' + esc(l.texto) + '</li>';
+        }).join('') + '</ul>';
+    }
+    Interface.abrirModal('modal-boletim');
+  }
+
+  /* ---------------- marcações ----------------
+     O que se desenha por cima do mundo sem mexer nele: o raio de uma
+     explosão, a faixa que o exército tomou, um alfinete de "foi aqui".
+
+     O tamanho é guardado em quilômetros, não em unidades do mapa nem em
+     pixels — assim o alcance continua valendo o mesmo depois de qualquer
+     zoom, e o número que aparece é o mesmo que a régua mede.
+
+     Quem assina importa: a marcação do mestre é a que vale para a mesa;
+     a do jogador é a anotação dele, e só ele (ou o mestre) a apaga. */
+
+  var CORES_MARCACAO = [
+    '#d22833', '#2e417e', '#c9a227', '#2f6b3a', '#6b3f8f', '#1f7a8c', '#3f0e16'
+  ];
+
+  function marcacoes() {
+    if (!Array.isArray(dados.marcacoes)) dados.marcacoes = [];
+    return dados.marcacoes;
+  }
+
+  function acharMarcacao(id) {
+    return marcacoes().filter(function (m) { return m.id === id; })[0] || null;
+  }
+
+  function kmParaUnidades(km) { return Number(km) / DadosMapa.KM_POR_UNIDADE; }
+  function unidadesParaKm(u) { return Number(u) * DadosMapa.KM_POR_UNIDADE; }
+
+  /* Quem eu sou para assinar o que desenho. O mestre assina como mestre;
+     o jogador precisa ter dito qual herói é. */
+  function autorDeMarcacao() {
+    if (ehMestre()) return 'mestre';
+    var eu = Interface.quemEuSou();
+    return eu && eu !== 'mestre' ? eu : null;
+  }
+
+  function podeMarcar() {
+    return !vendoOPassado() && autorDeMarcacao() !== null;
+  }
+
+  /* Só o dono mexe no que é seu — e o mestre modera tudo. */
+  function podeMexerNaMarcacao(m) {
+    if (!m || vendoOPassado()) return false;
+    if (ehMestre()) return true;
+    return m.autor === autorDeMarcacao();
+  }
+
+  function nomeDoAutorDaMarcacao(autor) {
+    if (autor === 'mestre') return 'O mestre';
+    var h = Interface.heroiPorId(autor);
+    return h && h.nome ? h.nome : 'Alguém';
+  }
+
+  function desenharMarcacoes() {
+    if (!montado) return;
+    camadaMarcacoes.textContent = '';
+    if (!mostrarMarcacoes || vendoOPassado()) return;
+
+    marcacoes().forEach(function (m) {
+      var escolhida = selecao && selecao.tipo === 'marcacao' && selecao.id === m.id;
+      var classe = 'marcacao' + (escolhida ? ' selecionada' : '') +
+                   (m.autor === 'mestre' ? ' do-mestre' : ' de-jogador');
+
+      if (m.tipo === 'circulo') {
+        var raio = kmParaUnidades(m.raioKm);
+        camadaMarcacoes.appendChild(el('circle', {
+          cx: m.x, cy: m.y, r: raio,
+          fill: m.cor, 'fill-opacity': escolhida ? 0.28 : 0.18,
+          stroke: m.cor, class: classe + ' marcacao-forma', 'data-marcacao': m.id
+        }));
+      } else if (m.tipo === 'retangulo') {
+        var lu = kmParaUnidades(m.larguraKm), au = kmParaUnidades(m.alturaKm);
+        camadaMarcacoes.appendChild(el('rect', {
+          x: m.x - lu / 2, y: m.y - au / 2, width: lu, height: au,
+          fill: m.cor, 'fill-opacity': escolhida ? 0.28 : 0.18,
+          stroke: m.cor, class: classe + ' marcacao-forma', 'data-marcacao': m.id
+        }));
+      } else {
+        /* O alfinete não tem tamanho no mundo: é um ícone, e precisa
+           continuar do mesmo tamanho na tela em qualquer zoom. O raio
+           real é acertado depois, em atualizarTamanhos. */
+        camadaMarcacoes.appendChild(el('circle', {
+          cx: m.x, cy: m.y, r: 4, fill: m.cor,
+          class: classe + ' marcacao-alfinete', 'data-marcacao': m.id, 'data-alfinete': '1'
+        }));
+      }
+
+      if (m.rotulo && mostrarRotulos) {
+        var alturaTexto = m.tipo === 'circulo' ? kmParaUnidades(m.raioKm)
+                        : m.tipo === 'retangulo' ? kmParaUnidades(m.alturaKm) / 2
+                        : 4;
+        var t = el('text', {
+          x: m.x, y: m.y - alturaTexto - 2,
+          class: 'rotulo-marcacao', 'font-size': 7, fill: m.cor,
+          'data-marcacao-rotulo': m.id
+        });
+        t.textContent = m.rotulo;
+        camadaMarcacoes.appendChild(t);
+      }
+    });
+  }
+
+  /* A forma em construção, enquanto o dedo ainda está no mapa. */
+  function desenharMarcacaoEmCurso() {
+    if (!marcandoAgora) return;
+    var a = marcandoAgora.inicio, b = marcandoAgora.atual;
+    var cor = marcandoAgora.cor;
+
+    if (marcandoAgora.tipo === 'circulo') {
+      var raio = Math.sqrt(Math.pow(b[0] - a[0], 2) + Math.pow(b[1] - a[1], 2));
+      camadaEdicao.appendChild(el('circle', {
+        cx: a[0], cy: a[1], r: Math.max(raio, 0.5),
+        fill: cor, 'fill-opacity': 0.16, stroke: cor, class: 'marcacao-previa'
+      }));
+      var textoRaio = el('text', {
+        x: a[0], y: a[1] - raio - 3, class: 'texto-regua', 'font-size': 9
+      });
+      textoRaio.textContent = 'raio ' +
+        Math.round(unidadesParaKm(raio)).toLocaleString('pt-BR') + ' km';
+      camadaEdicao.appendChild(textoRaio);
+    } else if (marcandoAgora.tipo === 'retangulo') {
+      var x = Math.min(a[0], b[0]), y = Math.min(a[1], b[1]);
+      var l = Math.abs(b[0] - a[0]), h = Math.abs(b[1] - a[1]);
+      camadaEdicao.appendChild(el('rect', {
+        x: x, y: y, width: Math.max(l, 0.5), height: Math.max(h, 0.5),
+        fill: cor, 'fill-opacity': 0.16, stroke: cor, class: 'marcacao-previa'
+      }));
+      var textoTam = el('text', { x: x + l / 2, y: y - 3, class: 'texto-regua', 'font-size': 9 });
+      textoTam.textContent = Math.round(unidadesParaKm(l)).toLocaleString('pt-BR') + ' × ' +
+                             Math.round(unidadesParaKm(h)).toLocaleString('pt-BR') + ' km';
+      camadaEdicao.appendChild(textoTam);
+    }
+  }
+
+  /* Guarda no servidor. A marcação vai pela porta própria, não pelo
+     estado do mestre — é o que deixa o jogador desenhar sem poder
+     encostar em fronteira nenhuma. */
+  function gravarMarcacao(m) {
+    var autor = autorDeMarcacao();
+    if (!autor) {
+      Interface.avisar('Diga qual herói você é para marcar o mapa.', 'erro');
+      return Promise.reject(new Error('sem autor'));
+    }
+
+    /* Numa instalação nova o servidor ainda não tem mapa nenhum — cada
+       cliente está desenhando o padrão embutido. A marcação precisa de um
+       mapa onde morar, então o mestre publica o dele antes de fincar a
+       primeira. O jogador não pode fazer isso, e nem precisa: quando ele
+       chega, o mestre já mexeu no mundo pelo menos uma vez. */
+    var primeiroDeTodos = ehMestre() && Sincronia.estaOnline() && !Sincronia.dadosMapa();
+    var preparar = Promise.resolve();
+    if (primeiroDeTodos) {
+      salvar();
+      preparar = Sincronia.gravarAgora();
+    }
+
+    return preparar
+      .then(function () { return Sincronia.salvarMarcacao(m, autor); })
+      .then(function (r) {
+        // o servidor devolve a marcação limpa — é ela que vale
+        var boa = (r && r.marcacao) || m;
+        var achou = false;
+        dados.marcacoes = marcacoes().map(function (o) {
+          if (o.id !== boa.id) return o;
+          achou = true;
+          return boa;
+        });
+        if (!achou) dados.marcacoes.push(boa);
+        desenharMarcacoes(); atualizarTamanhos();
+        return boa;
+      })
+      .catch(function (e) {
+        Interface.avisar(e.message, 'erro');
+        throw e;
+      });
+  }
+
+  function apagarMarcacao(id) {
+    var m = acharMarcacao(id);
+    if (!m || !podeMexerNaMarcacao(m)) return;
+    var dono = m.autor === autorDeMarcacao() ? 'sua marcação' :
+               'a marcação de ' + nomeDoAutorDaMarcacao(m.autor);
+    if (!confirm('Apagar ' + dono + (m.rotulo ? ' "' + m.rotulo + '"' : '') + '?')) return;
+
+    Sincronia.apagarMarcacao(id, autorDeMarcacao())
+      .then(function () {
+        dados.marcacoes = marcacoes().filter(function (o) { return o.id !== id; });
+        if (selecao && selecao.tipo === 'marcacao' && selecao.id === id) selecao = null;
+        desenharMarcacoes(); atualizarTamanhos(); renderInspetor();
+      })
+      .catch(function (e) { Interface.avisar(e.message, 'erro'); });
+  }
+
+  /* Fecha a forma que o dedo desenhou e guarda. */
+  function concluirMarcacao() {
+    if (!marcandoAgora) return;
+    var a = marcandoAgora.inicio, b = marcandoAgora.atual;
+    var tipo = marcandoAgora.tipo;
+    var cor = marcandoAgora.cor;
+    marcandoAgora = null;
+
+    var nova = {
+      id: 'mc' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+      tipo: tipo, cor: cor, rotulo: '', criadoEm: Date.now()
+    };
+
+    if (tipo === 'circulo') {
+      var raioU = Math.sqrt(Math.pow(b[0] - a[0], 2) + Math.pow(b[1] - a[1], 2));
+      var raioKm = Math.round(unidadesParaKm(raioU));
+      if (raioKm < 1) { desenharEdicao(); return; }   // clique sem arrasto: desiste
+      nova.x = a[0]; nova.y = a[1]; nova.raioKm = raioKm;
+    } else {
+      var lKm = Math.round(unidadesParaKm(Math.abs(b[0] - a[0])));
+      var hKm = Math.round(unidadesParaKm(Math.abs(b[1] - a[1])));
+      if (lKm < 1 || hKm < 1) { desenharEdicao(); return; }
+      nova.x = (a[0] + b[0]) / 2; nova.y = (a[1] + b[1]) / 2;
+      nova.larguraKm = lKm; nova.alturaKm = hKm;
+    }
+
+    desenharEdicao();
+    gravarMarcacao(nova).then(function (boa) {
+      selecionar('marcacao', boa.id, false);
+      abrirModalMarcacao(boa.id);
+    }).catch(function () { /* já avisado */ });
+  }
+
+  function criarAlfinete(ponto) {
+    var nova = {
+      id: 'mc' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+      tipo: 'alfinete', x: ponto[0], y: ponto[1],
+      cor: CORES_MARCACAO[0], rotulo: '', criadoEm: Date.now()
+    };
+    gravarMarcacao(nova).then(function (boa) {
+      selecionar('marcacao', boa.id, false);
+      abrirModalMarcacao(boa.id);
+    }).catch(function () { /* já avisado */ });
+  }
+
+  /* ---------------- modal da marcação ---------------- */
+
+  var marcacaoEmEdicao = null;
+
+  function abrirModalMarcacao(id) {
+    var m = acharMarcacao(id);
+    if (!m || !podeMexerNaMarcacao(m)) return;
+    marcacaoEmEdicao = id;
+
+    var rotulo = $('#marcacao-rotulo');
+    if (rotulo) rotulo.value = m.rotulo || '';
+
+    var campoTamanho = $('#marcacao-campo-tamanho');
+    var campoLargura = $('#marcacao-campo-largura');
+    if (campoTamanho) campoTamanho.hidden = m.tipo !== 'circulo';
+    if (campoLargura) campoLargura.hidden = m.tipo !== 'retangulo';
+    if (m.tipo === 'circulo') {
+      var raio = $('#marcacao-raio');
+      if (raio) raio.value = m.raioKm;
+    } else if (m.tipo === 'retangulo') {
+      var larg = $('#marcacao-largura'), alt = $('#marcacao-altura');
+      if (larg) larg.value = m.larguraKm;
+      if (alt) alt.value = m.alturaKm;
+    }
+
+    var paleta = $('#marcacao-paleta');
+    if (paleta) {
+      paleta.textContent = '';
+      CORES_MARCACAO.forEach(function (cor) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'ficha-cor' + (cor === m.cor ? ' escolhida' : '');
+        b.style.background = cor;
+        b.setAttribute('data-cor', cor);
+        b.addEventListener('click', function () {
+          $$('#marcacao-paleta .ficha-cor').forEach(function (o) {
+            o.classList.toggle('escolhida', o === b);
+          });
+        });
+        paleta.appendChild(b);
+      });
+    }
+
+    var quem = $('#marcacao-autor');
+    if (quem) {
+      quem.textContent = m.autor === 'mestre'
+        ? 'Marcação do mestre — a mesa toda vê.'
+        : 'Anotação de ' + nomeDoAutorDaMarcacao(m.autor) + ' — a mesa toda vê.';
+    }
+
+    Interface.abrirModal('modal-marcacao');
+  }
+
+  function ligarModalMarcacao() {
+    var salvarBotao = $('#marcacao-salvar');
+    if (salvarBotao) salvarBotao.addEventListener('click', function () {
+      var m = acharMarcacao(marcacaoEmEdicao);
+      if (!m) return Interface.fecharModal('modal-marcacao');
+
+      var copia = JSON.parse(JSON.stringify(m));
+      var rotulo = $('#marcacao-rotulo');
+      copia.rotulo = rotulo ? rotulo.value.trim().slice(0, 120) : '';
+
+      var escolhida = $('#marcacao-paleta .ficha-cor.escolhida');
+      if (escolhida) copia.cor = escolhida.getAttribute('data-cor');
+
+      if (copia.tipo === 'circulo') {
+        var raio = parseInt(($('#marcacao-raio') || {}).value, 10);
+        if (isFinite(raio) && raio >= 1) copia.raioKm = raio;
+      } else if (copia.tipo === 'retangulo') {
+        var l = parseInt(($('#marcacao-largura') || {}).value, 10);
+        var a = parseInt(($('#marcacao-altura') || {}).value, 10);
+        if (isFinite(l) && l >= 1) copia.larguraKm = l;
+        if (isFinite(a) && a >= 1) copia.alturaKm = a;
+      }
+
+      gravarMarcacao(copia).then(function () {
+        Interface.fecharModal('modal-marcacao');
+        renderInspetor();
+      }).catch(function () { /* já avisado */ });
+    });
+
+    var apagarBotao = $('#marcacao-apagar');
+    if (apagarBotao) apagarBotao.addEventListener('click', function () {
+      var id = marcacaoEmEdicao;
+      Interface.fecharModal('modal-marcacao');
+      apagarMarcacao(id);
+    });
+
+    var cancelar = $('#marcacao-cancelar');
+    if (cancelar) cancelar.addEventListener('click', function () {
+      Interface.fecharModal('modal-marcacao');
+    });
+  }
+
+  /* ---------------- rastro do grupo ----------------
+     Cada momento da crônica guarda onde os heróis estavam. Ligando os
+     pontos em ordem de data sai o caminho que a campanha percorreu. */
+
+  function pontosDoRastro() {
+    var porHeroi = {};
+    momentos().forEach(function (m) {
+      (m.tokens || []).forEach(function (t) {
+        if (t.x === null || t.x === undefined) return;
+        if (!porHeroi[t.id]) porHeroi[t.id] = { cor: t.cor, nome: t.nome, pontos: [] };
+        porHeroi[t.id].pontos.push({ x: t.x, y: t.y, data: m.data, rotulo: m.rotulo });
+      });
+    });
+    // e onde eles estão agora, fechando a linha até o presente
+    if (!vendoOPassado()) {
+      (dados.tokens || []).forEach(function (t) {
+        if (t.x === null || t.x === undefined || !porHeroi[t.id]) return;
+        porHeroi[t.id].pontos.push({ x: t.x, y: t.y, data: null, rotulo: '' });
+      });
+    }
+    return porHeroi;
+  }
+
+  function desenharRastro() {
+    if (!montado) return;
+    camadaRastro.textContent = '';
+    if (!mostrarRastro) return;
+
+    var porHeroi = pontosDoRastro();
+    Object.keys(porHeroi).forEach(function (id) {
+      var trilha = porHeroi[id];
+      if (trilha.pontos.length < 2) return;
+
+      camadaRastro.appendChild(el('polyline', {
+        points: trilha.pontos.map(function (p) { return p.x + ',' + p.y; }).join(' '),
+        fill: 'none', stroke: trilha.cor || '#d22833', class: 'linha-rastro'
+      }));
+
+      trilha.pontos.forEach(function (p, i) {
+        var passo = el('circle', {
+          cx: p.x, cy: p.y, r: 2.4, fill: trilha.cor || '#d22833',
+          class: 'passo-rastro' + (i === trilha.pontos.length - 1 ? ' atual' : '')
+        });
+        var quando = p.data ? CalendarioArton.formatarColoquial(p.data) : 'agora';
+        var titulo = el('title', {});
+        titulo.textContent = (trilha.nome || 'Herói') + ' — ' + quando +
+                             (p.rotulo ? ' · ' + p.rotulo : '');
+        passo.appendChild(titulo);
+        camadaRastro.appendChild(passo);
+      });
+    });
   }
 
   /* ---------------- a névoa ----------------
@@ -884,6 +1509,8 @@ var MapaArton = (function () {
       }
     });
 
+    desenharRastro();
+    desenharMarcacoes();
     desenharTokens();
     desenharEdicao();
     atualizarTamanhos();
@@ -1397,6 +2024,8 @@ var MapaArton = (function () {
       }
     }
 
+    desenharMarcacaoEmCurso();
+
     if (regua.length) {
       regua.forEach(function (p) {
         camadaEdicao.appendChild(el('circle', { cx: p[0], cy: p[1], r: 3, class: 'ponto-regua' }));
@@ -1554,12 +2183,15 @@ var MapaArton = (function () {
     }
 
     var estado = velada ? 'neutro' : (nacao.estadoGuerra || 'neutro');
-    if (estado !== 'neutro') {
+    /* Um estado que o código não conhece — de um backup editado à mão ou
+       de uma versão mais nova — não pode derrubar a lista inteira. */
+    var descricaoGuerra = GUERRA[estado];
+    if (estado !== 'neutro' && descricaoGuerra) {
       var selo = document.createElement('span');
       selo.className = 'selo-guerra selo-' + estado;
-      selo.textContent = GUERRA[estado].icone;
+      selo.textContent = descricaoGuerra.icone;
       var dono = nacao.controladoPor ? acharNacao(nacao.controladoPor) : null;
-      selo.title = GUERRA[estado].rotulo + (dono ? ' — sob domínio de ' + dono.nome : '');
+      selo.title = descricaoGuerra.rotulo + (dono ? ' — sob domínio de ' + dono.nome : '');
       cabeca.appendChild(selo);
     }
 
@@ -1618,7 +2250,181 @@ var MapaArton = (function () {
     }
     if (selecao.tipo === 'nacao') renderInspetorNacao(caixa, acharNacao(selecao.id));
     else if (selecao.tipo === 'token') renderInspetorToken(caixa, acharToken(selecao.id));
+    else if (selecao.tipo === 'marcacao') renderInspetorMarcacao(caixa, acharMarcacao(selecao.id));
     else renderInspetorCidade(caixa, acharCidade(selecao.id));
+  }
+
+  var NOME_DA_FORMA = {
+    circulo: 'Círculo', retangulo: 'Retângulo', alfinete: 'Alfinete'
+  };
+
+  function renderInspetorMarcacao(caixa, m) {
+    if (!m) { caixa.innerHTML = ''; return; }
+    var onde = localDoPonto([m.x, m.y]);
+    var meu = podeMexerNaMarcacao(m);
+
+    var medida = '';
+    if (m.tipo === 'circulo') {
+      var diametro = m.raioKm * 2;
+      medida = '<dt>Raio</dt><dd>' + m.raioKm.toLocaleString('pt-BR') + ' km</dd>' +
+               '<dt>Ponta a ponta</dt><dd>' + diametro.toLocaleString('pt-BR') + ' km</dd>' +
+               '<dt>Área</dt><dd>' +
+                 Math.round(Math.PI * m.raioKm * m.raioKm).toLocaleString('pt-BR') +
+               ' km²</dd>';
+    } else if (m.tipo === 'retangulo') {
+      medida = '<dt>Tamanho</dt><dd>' + m.larguraKm.toLocaleString('pt-BR') + ' × ' +
+               m.alturaKm.toLocaleString('pt-BR') + ' km</dd>' +
+               '<dt>Área</dt><dd>' +
+                 (m.larguraKm * m.alturaKm).toLocaleString('pt-BR') + ' km²</dd>';
+    }
+
+    /* Quantos dias de marcha o raio representa — a mesma conta da régua,
+       que é o que a mesa quer saber quando olha uma área no mapa. */
+    var alcance = m.tipo === 'circulo' ? m.raioKm
+                : m.tipo === 'retangulo' ? Math.max(m.larguraKm, m.alturaKm) / 2
+                : 0;
+    if (alcance) {
+      var dias = Math.max(1, Math.round(alcance / DadosMapa.KM_POR_DIA_DE_VIAGEM));
+      medida += '<dt>Do centro à borda</dt><dd>' + dias +
+                (dias === 1 ? ' dia' : ' dias') + ' de viagem</dd>';
+    }
+
+    caixa.innerHTML =
+      '<div class="inspetor-topo">' +
+        '<span class="selo-marcacao" style="background:' + esc(m.cor) + '"></span>' +
+        '<div><h2>' + esc(m.rotulo || NOME_DA_FORMA[m.tipo] || 'Marcação') + '</h2>' +
+        '<div class="sub">' + esc(NOME_DA_FORMA[m.tipo] || 'Marcação') +
+          ' · ' + esc(nomeDoAutorDaMarcacao(m.autor)) + '</div></div>' +
+      '</div>' +
+      '<dl class="ficha">' +
+        (onde.nacao ? '<dt>Sobre</dt><dd>' + esc(onde.nacao) + '</dd>' : '') +
+        (onde.perto ? '<dt>Perto de</dt><dd>' + esc(onde.perto) + '</dd>' : '') +
+        medida +
+      '</dl>' +
+      (meu
+        ? '<div class="grupo-botoes" style="margin-top:12px">' +
+            '<button class="botao pequeno" id="inspetor-marcacao-editar">✎ Editar</button>' +
+            '<button class="botao pequeno perigo" id="inspetor-marcacao-apagar">Apagar</button>' +
+          '</div>' +
+          '<div class="discreto" style="margin-top:8px">Arraste a marcação para mudá-la de lugar.</div>'
+        : '<div class="discreto" style="margin-top:12px">' +
+            'Só quem desenhou — ou o mestre — mexe nesta marcação.</div>');
+
+    var editar = $('#inspetor-marcacao-editar', caixa);
+    if (editar) editar.addEventListener('click', function () { abrirModalMarcacao(m.id); });
+    var apagar = $('#inspetor-marcacao-apagar', caixa);
+    if (apagar) apagar.addEventListener('click', function () { apagarMarcacao(m.id); });
+  }
+
+  /* ---------------- brasão do grupo ----------------
+     O mesmo motor que desenha os treze escudos do Atlas serve à mesa:
+     o grupo escreve o próprio brasão na linguagem heráldica e ganha um
+     estandarte. */
+
+  function brasaoDoGrupo() {
+    return dados.brasaoGrupo || { nome: '', brasao: '' };
+  }
+
+  function renderEstandarte() {
+    var caixa = $('#estandarte-grupo');
+    if (!caixa) return;
+    caixa.textContent = '';
+
+    var b = brasaoDoGrupo();
+    var temAlgo = b.nome || b.brasao;
+    if (!temAlgo && !ehMestre()) { caixa.hidden = true; return; }
+    caixa.hidden = false;
+
+    if (temAlgo) {
+      var escudo = Heraldica.escudo(b.brasao, { nome: b.nome || 'G', cor: '#8a8177' });
+      escudo.classList.add('brasao-grupo');
+      caixa.appendChild(escudo);
+
+      var texto = document.createElement('div');
+      texto.className = 'estandarte-texto';
+      var nome = document.createElement('div');
+      nome.className = 'estandarte-nome';
+      nome.textContent = b.nome || 'O grupo';
+      texto.appendChild(nome);
+      if (b.brasao) {
+        var lema = document.createElement('div');
+        lema.className = 'estandarte-brasao';
+        lema.textContent = b.brasao;
+        texto.appendChild(lema);
+      }
+      caixa.appendChild(texto);
+    }
+
+    if (ehMestre()) {
+      var botao = document.createElement('button');
+      botao.className = 'botao pequeno fantasma estandarte-editar';
+      botao.textContent = temAlgo ? '✎' : '⚜ Dar um brasão ao grupo';
+      botao.title = 'Compor o brasão do grupo';
+      botao.addEventListener('click', abrirModalBrasao);
+      caixa.appendChild(botao);
+    }
+  }
+
+  function abrirModalBrasao() {
+    if (!ehMestre()) return;
+    var b = brasaoDoGrupo();
+    var nome = $('#brasao-nome'), texto = $('#brasao-texto');
+    if (nome) nome.value = b.nome || '';
+    if (texto) texto.value = b.brasao || '';
+    previewBrasao();
+    Interface.abrirModal('modal-brasao');
+  }
+
+  function previewBrasao() {
+    var alvo = $('#brasao-previa');
+    if (!alvo) return;
+    alvo.textContent = '';
+    var texto = $('#brasao-texto');
+    var nome = $('#brasao-nome');
+    alvo.appendChild(Heraldica.escudo(
+      texto ? texto.value.trim() : '',
+      { nome: (nome && nome.value) || 'G', cor: '#8a8177' }
+    ));
+  }
+
+  function ligarModalBrasao() {
+    var texto = $('#brasao-texto'), nome = $('#brasao-nome');
+    if (texto) texto.addEventListener('input', previewBrasao);
+    if (nome) nome.addEventListener('input', previewBrasao);
+
+    $$('[data-brasao-exemplo]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        if (texto) texto.value = b.getAttribute('data-brasao-exemplo');
+        previewBrasao();
+      });
+    });
+
+    var salvarBotao = $('#brasao-salvar');
+    if (salvarBotao) salvarBotao.addEventListener('click', function () {
+      if (!ehMestre()) return;
+      dados.brasaoGrupo = {
+        nome: nome ? nome.value.trim().slice(0, 60) : '',
+        brasao: texto ? texto.value.trim().slice(0, 240) : ''
+      };
+      salvar();
+      renderEstandarte();
+      Interface.fecharModal('modal-brasao');
+      Interface.avisar('O grupo tem estandarte.');
+    });
+
+    var limpar = $('#brasao-limpar');
+    if (limpar) limpar.addEventListener('click', function () {
+      if (!ehMestre()) return;
+      dados.brasaoGrupo = null;
+      salvar();
+      renderEstandarte();
+      Interface.fecharModal('modal-brasao');
+    });
+
+    var cancelar = $('#brasao-cancelar');
+    if (cancelar) cancelar.addEventListener('click', function () {
+      Interface.fecharModal('modal-brasao');
+    });
   }
 
   function renderInspetorToken(caixa, t) {
@@ -2028,6 +2834,30 @@ var MapaArton = (function () {
         regua.push(ponto); desenharEdicao(); return;
       }
 
+      // --- desenhar uma marcação: o arrasto define o tamanho ---
+      if (ferramenta === 'alfinete' && podeMarcar()) { criarAlfinete(ponto); return; }
+      if ((ferramenta === 'circulo' || ferramenta === 'retangulo') && podeMarcar()) {
+        marcandoAgora = {
+          tipo: ferramenta, inicio: ponto, atual: ponto,
+          cor: CORES_MARCACAO[0]
+        };
+        capturarPonteiro(e.pointerId);
+        desenharEdicao();
+        return;
+      }
+
+      // --- uma marcação já pronta ---
+      if (alvo.hasAttribute && alvo.hasAttribute('data-marcacao')) {
+        var idm = alvo.getAttribute('data-marcacao');
+        selecionar('marcacao', idm, false);
+        var marca = acharMarcacao(idm);
+        if (marca && podeMexerNaMarcacao(marca)) {
+          arrasto = { tipo: 'marcacao', marcacao: marca, moveu: false };
+          capturarPonteiro(e.pointerId);
+        }
+        return;
+      }
+
       // --- alça de tamanho do herói ---
       if (alvo.hasAttribute && alvo.hasAttribute('data-punho') && podeEditar()) {
         arrasto = { tipo: 'tamanho', token: acharToken(alvo.getAttribute('data-punho')), moveu: false };
@@ -2108,6 +2938,13 @@ var MapaArton = (function () {
     svg.addEventListener('pointermove', function (e) {
       if (dedos[e.pointerId]) { dedos[e.pointerId].x = e.clientX; dedos[e.pointerId].y = e.clientY; }
       if (pinca) { seguirPinca(); return; }
+
+      if (marcandoAgora) {
+        marcandoAgora.atual = coordenadas(e);
+        desenharEdicao();
+        return;
+      }
+
       if (ferramenta === 'selecionar' && !arrasto) mostrarDica(e);
       if (!arrasto) return;
       var ponto = coordenadas(e);
@@ -2141,6 +2978,11 @@ var MapaArton = (function () {
         desenharTokens(); atualizarTamanhosTokens();
         var barra = $('#token-escala');
         if (barra) barra.value = Math.round(t2.tamanho * 100);
+      } else if (arrasto.tipo === 'marcacao') {
+        arrasto.marcacao.x = Math.round(ponto[0] * 100) / 100;
+        arrasto.marcacao.y = Math.round(ponto[1] * 100) / 100;
+        arrasto.moveu = true;
+        desenharMarcacoes(); atualizarTamanhos();
       } else if (arrasto.tipo === 'territorio') {
         var dx = ponto[0] - arrasto.anterior[0], dy = ponto[1] - arrasto.anterior[1];
         arrasto.nacao.poligono = arrasto.nacao.poligono.map(function (p) {
@@ -2157,13 +2999,24 @@ var MapaArton = (function () {
         pinca = null;
         return;   // largar um dedo encerra a pinça, não vira arrasto
       }
+
+      if (marcandoAgora) {
+        try { svg.releasePointerCapture(e.pointerId); } catch (err) { /* ok */ }
+        concluirMarcacao();
+        return;
+      }
+
       if (!arrasto) return;
       svg.classList.remove('arrastando');
       try { svg.releasePointerCapture(e.pointerId); } catch (err) { /* ok */ }
       if (arrasto.moveu && arrasto.tipo !== 'vista') {
-        salvar();
+        /* A marcação não entra no estado do mestre: tem porta própria,
+           senão um jogador arrastando a própria anotação tentaria gravar
+           o mapa inteiro e levaria um 403. */
+        if (arrasto.tipo === 'marcacao') gravarMarcacao(arrasto.marcacao).catch(function () {});
+        else salvar();
         if (arrasto.tipo === 'cidade' || arrasto.tipo === 'token' ||
-            arrasto.tipo === 'tamanho') renderInspetor();
+            arrasto.tipo === 'tamanho' || arrasto.tipo === 'marcacao') renderInspetor();
       }
       var aSelecionar = (!arrasto.moveu && arrasto.talvezSelecione) ? arrasto.talvezSelecione : null;
       arrasto = null;
@@ -2287,20 +3140,36 @@ var MapaArton = (function () {
 
   /* ---------------- ferramentas ---------------- */
 
+  var FERRAMENTAS_MARCACAO = { circulo: true, retangulo: true, alfinete: true };
+
   function definirFerramenta(nova) {
     if ((nova === 'territorio' || nova === 'cidade') && !podeEditar()) return;
+    if (FERRAMENTAS_MARCACAO[nova] && !podeMarcar()) {
+      if (vendoOPassado()) {
+        Interface.avisar('O passado não se marca. Volte ao presente primeiro.', 'erro');
+      } else {
+        Interface.avisar('Diga qual herói você é para marcar o mapa.', 'erro');
+        Interface.abrirEscolhaDeHeroi();
+      }
+      return;
+    }
     ferramenta = nova;
     if (nova !== 'territorio') rascunho = [];
     if (nova !== 'regua') regua = [];
+    marcandoAgora = null;
     $$('.ferramenta[data-ferramenta]').forEach(function (b) {
       b.classList.toggle('ativa', b.getAttribute('data-ferramenta') === nova);
     });
-    svg.classList.toggle('desenhando', nova === 'territorio' || nova === 'cidade');
+    svg.classList.toggle('desenhando',
+      nova === 'territorio' || nova === 'cidade' || !!FERRAMENTAS_MARCACAO[nova]);
     svg.classList.toggle('medindo', nova === 'regua');
     desenharEdicao();
     if (nova === 'territorio') Interface.avisar('Clique nos cantos da fronteira. Duplo clique fecha.');
     else if (nova === 'cidade') Interface.avisar('Clique no mapa para fundar um local.');
     else if (nova === 'regua') Interface.avisar('Clique em dois pontos para medir.');
+    else if (nova === 'circulo') Interface.avisar('Arraste do centro para fora — a distância vira o raio.');
+    else if (nova === 'retangulo') Interface.avisar('Arraste de um canto ao outro.');
+    else if (nova === 'alfinete') Interface.avisar('Clique onde quiser fincar o alfinete.');
   }
 
   function ligarFerramentas() {
@@ -2321,6 +3190,27 @@ var MapaArton = (function () {
       Interface.avisar(espiandoNevoa
         ? 'Você está vendo através da névoa. A mesa continua sem enxergar.'
         : 'Névoa de volta no lugar.');
+    });
+
+    var marcas = $('#mapa-marcacoes');
+    if (marcas) {
+      marcas.classList.toggle('ativa', mostrarMarcacoes);
+      marcas.addEventListener('click', function () {
+        mostrarMarcacoes = !mostrarMarcacoes;
+        marcas.classList.toggle('ativa', mostrarMarcacoes);
+        desenharMarcacoes(); atualizarTamanhos();
+        Interface.avisar(mostrarMarcacoes ? 'Marcações à vista.' : 'Marcações escondidas.');
+      });
+    }
+
+    var rastro = $('#mapa-rastro');
+    if (rastro) rastro.addEventListener('click', function () {
+      mostrarRastro = !mostrarRastro;
+      rastro.classList.toggle('ativa', mostrarRastro);
+      desenharRastro(); atualizarTamanhos();
+      if (mostrarRastro && !Object.keys(pontosDoRastro()).length) {
+        Interface.avisar('Ainda não há rastro: registre momentos na crônica com o grupo no mapa.');
+      }
     });
 
     var enq = $('#mapa-enquadrar');
@@ -2410,8 +3300,9 @@ var MapaArton = (function () {
         }
         if (!confirm('Restaurar este backup?\n\nO mapa e o calendário atuais serão substituídos para todo mundo.')) return;
         adotar(pacote.mapa);
-        Sincronia.salvarMapa(dados);
-        // aqui o diário do backup entra no lugar do atual, de propósito
+        // aqui o diário e as marcações do backup entram no lugar dos
+        // atuais, de propósito — restaurar é voltar tudo àquele dia
+        Sincronia.salvarMapa(dados, { substituirMarcacoes: true });
         if (pacote.calendario) {
           Sincronia.salvarCalendario(pacote.calendario, { substituirNotas: true });
         }
@@ -2478,7 +3369,10 @@ var MapaArton = (function () {
       if (n.conhecido === undefined) n.conhecido = true;
     });
     if (!Array.isArray(dados.cronica)) dados.cronica = [];
+    // estados salvos antes das marcações e do estandarte existirem
+    if (!Array.isArray(dados.marcacoes)) dados.marcacoes = [];
     if (momentoVisto && !acharMomento(momentoVisto)) momentoVisto = null;
+    if (selecao && selecao.tipo === 'marcacao' && !acharMarcacao(selecao.id)) selecao = null;
     return true;
   }
 
@@ -2500,6 +3394,11 @@ var MapaArton = (function () {
     else if (k === 'r') definirFerramenta('regua');
     else if (k === 't') definirFerramenta('territorio');
     else if (k === 'c') definirFerramenta('cidade');
+    else if (k === 'a') definirFerramenta('circulo');
+    else if (k === 'x') definirFerramenta('retangulo');
+    else if (k === 'p') definirFerramenta('alfinete');
+    else if (k === 'm') { var bm = $('#mapa-marcacoes'); if (bm) bm.click(); }
+    else if (k === 'j') { var bj = $('#mapa-rastro'); if (bj) bj.click(); }
     else if (k === 'l') { var b = $('#mapa-rotulos'); if (b) b.click(); }
     else if (k === 'n') { var e = $('#mapa-espiar'); if (e && ehMestre()) e.click(); }
     else if (k === '0') enquadrar();
@@ -2517,13 +3416,15 @@ var MapaArton = (function () {
     desenhar();
     renderLista();
     renderTira();
+    renderEstandarte();
     renderInspetor();
     renderCronica();
     requestAnimationFrame(enquadrar);
 
     Sincronia.aoMudar('mapa', function (remoto) {
       if (adotar(remoto)) {
-        desenhar(); renderLista(); renderTira(); renderInspetor(); renderCronica();
+        desenhar(); renderLista(); renderTira(); renderEstandarte();
+        renderInspetor(); renderCronica();
         Interface.avisar('O mestre alterou o mapa.');
       }
     });
@@ -2533,8 +3434,26 @@ var MapaArton = (function () {
         editandoVertices = false;
         if (ferramenta === 'territorio' || ferramenta === 'cidade') definirFerramenta('selecionar');
       }
-      renderInspetor(); renderTira(); renderCronica(); desenharEdicao();
+      renderInspetor(); renderTira(); renderEstandarte(); renderCronica(); desenharEdicao();
     });
+
+    /* O jogador escolheu qual herói é: as ferramentas de marcação saem
+       do cinza, porque agora há com que assinar. */
+    Interface.quandoIdentidadeMudar(function () {
+      renderInspetor();
+      atualizarFerramentasDeMarcacao();
+    });
+    atualizarFerramentasDeMarcacao();
+  }
+
+  /* Sem herói escolhido não há como assinar uma marcação — o botão fica
+     apagado em vez de falhar depois do desenho pronto. */
+  function atualizarFerramentasDeMarcacao() {
+    var grupo = $('#mapa-ferramentas-marcar');
+    if (!grupo) return;
+    var pode = podeMarcar();
+    grupo.classList.toggle('adormecido', !pode);
+    if (!pode && FERRAMENTAS_MARCACAO[ferramenta]) definirFerramenta('selecionar');
   }
 
   return {
@@ -2544,6 +3463,15 @@ var MapaArton = (function () {
     registrarMomento: registrarMomento,
     verMomento: verMomento,
     voltarAoPresente: voltarAoPresente,
-    vendoOPassado: vendoOPassado
+    vendoOPassado: vendoOPassado,
+
+    /* O calendário precisa saber em que dias a guerra virou, para marcar
+       a grade e levar o mestre até o mapa daquele momento. */
+    momentos: function () {
+      return momentos().map(function (m) {
+        return { id: m.id, data: m.data, rotulo: m.rotulo, criadoEm: m.criadoEm };
+      });
+    },
+    abrirBoletim: abrirBoletim
   };
 })();

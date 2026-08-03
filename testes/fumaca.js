@@ -341,6 +341,140 @@ function testarServidor(porta) {
 
     }).then(function () {
 
+      /* ---- marcações ---- */
+      secao('As marcações do mapa');
+
+      // o jogador finca uma marcação sua
+      return pedir(porta, 'POST', '/api/marcacao', {
+        cookie: cookieJogador,
+        corpo: {
+          acao: 'salvar', autor: 'heroi-1',
+          marcacao: {
+            id: 'mc-do-jogador', tipo: 'circulo', x: 300, y: 400,
+            raioKm: 250, rotulo: 'onde caiu o meteoro', cor: '#d22833'
+          }
+        }
+      });
+    }).then(function (r) {
+      conferir('o jogador finca uma marcação', r.status === 200, JSON.stringify(r.json));
+      conferir('e ela volta assinada por ele',
+        r.json.marcacao && r.json.marcacao.autor === 'heroi-1', JSON.stringify(r.json.marcacao));
+
+      return pedir(porta, 'POST', '/api/marcacao', {
+        cookie: cookieMestre,
+        corpo: {
+          acao: 'salvar', autor: 'mestre',
+          marcacao: {
+            id: 'mc-do-mestre', tipo: 'retangulo', x: 100, y: 120,
+            larguraKm: 400, alturaKm: 200, rotulo: 'frente de batalha', cor: '#2e417e'
+          }
+        }
+      });
+    }).then(function (r) {
+      conferir('o mestre finca a dele', r.status === 200, JSON.stringify(r.json));
+
+      /* O ponto do exercício: o mestre grava o mapa com a cópia velha,
+         sem a marcação que o jogador acabou de fazer. */
+      return pedir(porta, 'GET', '/api/estado', { cookie: cookieMestre })
+        .then(function (antes) {
+          return pedir(porta, 'PUT', '/api/estado', {
+            cookie: cookieMestre,
+            corpo: {
+              baseVersao: antes.json.versao,
+              mapa: {
+                nacoes: [], cidades: [],
+                tokens: [{ id: 'heroi-1', nome: 'Lady Ayleth', cor: '#d22833' }],
+                marcacoes: []          // a cópia velha do mestre não tem nenhuma
+              }
+            }
+          });
+        });
+    }).then(function (r) {
+      conferir('o mestre grava o mapa sem as marcações', r.status === 200, JSON.stringify(r.json));
+      return pedir(porta, 'GET', '/api/estado', { cookie: cookieMestre });
+    }).then(function (r) {
+      var marcas = (r.json.mapa && r.json.mapa.marcacoes) || [];
+      var doJogador = marcas.filter(function (m) { return m.id === 'mc-do-jogador'; })[0];
+      var doMestre = marcas.filter(function (m) { return m.id === 'mc-do-mestre'; })[0];
+
+      conferir('a marcação do jogador sobreviveu',
+        !!doJogador && doJogador.rotulo === 'onde caiu o meteoro', JSON.stringify(marcas));
+      conferir('e a do mestre saiu, porque ele mandou o mapa sem ela',
+        !doMestre, JSON.stringify(marcas));
+
+      // validação
+      return pedir(porta, 'POST', '/api/marcacao', {
+        cookie: cookieJogador,
+        corpo: {
+          acao: 'salvar', autor: 'heroi-1',
+          marcacao: { id: 'mc-torta', tipo: 'trapezio', x: 1, y: 1 }
+        }
+      });
+    }).then(function (r) {
+      conferir('forma desconhecida é recusada', r.status === 400, 'veio ' + r.status);
+
+      return pedir(porta, 'POST', '/api/marcacao', {
+        cookie: cookieJogador,
+        corpo: {
+          acao: 'salvar', autor: 'heroi-1',
+          marcacao: { id: 'mc-gigante', tipo: 'circulo', x: 1, y: 1, raioKm: 999999 }
+        }
+      });
+    }).then(function (r) {
+      conferir('raio absurdo é recusado', r.status === 400, 'veio ' + r.status);
+
+      return pedir(porta, 'POST', '/api/marcacao', {
+        cookie: cookieJogador,
+        corpo: {
+          acao: 'salvar', autor: 'nao-existe',
+          marcacao: { id: 'mc-fantasma', tipo: 'alfinete', x: 1, y: 1 }
+        }
+      });
+    }).then(function (r) {
+      conferir('herói inexistente não marca o mapa', r.status === 403, 'veio ' + r.status);
+
+      return pedir(porta, 'POST', '/api/marcacao', {
+        cookie: cookieJogador,
+        corpo: {
+          acao: 'salvar', autor: 'heroi-1',
+          marcacao: { id: 'mc-do-mestre-2', tipo: 'alfinete', x: 5, y: 5 }
+        }
+      }).then(function () {
+        // o jogador tenta editar a marcação de outro dono
+        return pedir(porta, 'POST', '/api/marcacao', {
+          cookie: cookieJogador,
+          corpo: {
+            acao: 'salvar', autor: 'heroi-1',
+            marcacao: { id: 'mc-do-jogador', tipo: 'circulo', x: 9, y: 9, raioKm: 10 }
+          }
+        });
+      });
+    }).then(function (r) {
+      conferir('o dono edita a própria marcação', r.status === 200, JSON.stringify(r.json));
+
+      // o mestre modera: apaga a do jogador
+      return pedir(porta, 'POST', '/api/marcacao', {
+        cookie: cookieMestre,
+        corpo: { acao: 'apagar', autor: 'mestre', id: 'mc-do-jogador' }
+      });
+    }).then(function (r) {
+      conferir('o mestre apaga a marcação de um jogador', r.status === 200, JSON.stringify(r.json));
+      return pedir(porta, 'GET', '/api/estado', { cookie: cookieMestre });
+    }).then(function (r) {
+      var marcas = (r.json.mapa && r.json.mapa.marcacoes) || [];
+      conferir('e ela sumiu mesmo',
+        !marcas.filter(function (m) { return m.id === 'mc-do-jogador'; }).length,
+        JSON.stringify(marcas.map(function (m) { return m.id; })));
+
+      return pedir(porta, 'POST', '/api/marcacao', {
+        cookie: cookieJogador,
+        corpo: { acao: 'apagar', autor: 'heroi-1', id: 'nao-existe' }
+      });
+    }).then(function (r) {
+      conferir('apagar o que não existe dá 404', r.status === 404, 'veio ' + r.status);
+
+    }).then(function () {
+
       /* ---- logout ---- */
       secao('Sair derruba a sessão de verdade');
 

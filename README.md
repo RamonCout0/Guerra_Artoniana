@@ -17,7 +17,15 @@ Tudo numa página só:
 - **A guerra** pinta o mapa: território tomado fica listrado com as cores do conquistador
   sobre as do dono antigo, cerco tem fronteira pulsante, revolta é hachurada.
 - **A crônica** guarda o mapa em momentos datados, e você percorre a linha do tempo para
-  ver a guerra acontecer.
+  ver a guerra acontecer. Cada momento aparece no calendário, no dia em que aconteceu, e o
+  **boletim** compara dois momentos e narra em texto o que mudou: quem tomou o quê, quem se
+  revoltou, quanto território mudou de mãos.
+- **As marcações** desenham por cima do mundo sem mexer nele: círculo, retângulo e alfinete,
+  com o tamanho em quilômetros — o raio de uma explosão continua valendo o mesmo depois de
+  qualquer zoom. O mestre marca para a mesa; cada jogador marca as próprias anotações.
+- **O rastro** liga as posições do grupo momento a momento, mostrando o caminho da campanha.
+- **As sessões** registram o encontro de verdade — número, data real, resumo — amarrado aos
+  dias de Arton que vocês jogaram.
 - **A névoa** esconde o que o grupo ainda não conhece.
 - **Os brasões** de treze nações são desenhados a partir da linguagem heráldica do Atlas.
 
@@ -106,8 +114,10 @@ Em produção o servidor prefere não subir a subir aberto: sem `SENHA_MESTRE` e
 erro dizendo o que falta. Ele reconhece produção por `NODE_ENV=production` ou pelas
 variáveis que o próprio Railway injeta.
 
-O servidor tem uma porta extra, `POST /api/diario`, que é a única gravação liberada a quem
-não é mestre — e só aceita a entrada de um herói que exista no grupo, num dia válido.
+O servidor tem duas portas estreitas, `POST /api/diario` e `POST /api/marcacao`, que são as
+únicas gravações liberadas a quem não é mestre — e só aceitam a assinatura de um herói que
+exista no grupo. A do diário exige um dia válido; a das marcações valida forma, posição e
+tamanho antes de deixar qualquer coisa entrar no estado.
 
 Trocar `SENHA_MESTRE` ou `SEGREDO` derruba as sessões abertas — é só entrar de novo.
 Clicar em **Sair** também: o token do mestre carrega a época em que nasceu, e sair faz a
@@ -123,6 +133,9 @@ O mestre grava o mundo por `PUT /api/estado`; os jogadores gravam só o próprio
   são preservadas como estão no banco. Antes, como o mestre trabalha com uma cópia de até
   seis segundos atrás, mover o tempo apagava o que um jogador tivesse acabado de escrever.
   Só a restauração de backup pede explicitamente para trocar o diário inteiro.
+- **As marcações dos jogadores também.** Quando o mestre grava o mapa, as marcações que ele
+  não assinou ficam onde estão — as dele são substituídas normalmente. Para moderar uma
+  marcação de jogador, o mestre a apaga pela porta própria.
 - **Trava otimista no resto.** Cada gravação do mestre diz de qual revisão partiu; se o
   mundo andou desde então — outra aba, outro aparelho — o servidor responde `409` e o
   cliente recarrega e avisa, em vez de passar por cima. Escrever no diário não move a

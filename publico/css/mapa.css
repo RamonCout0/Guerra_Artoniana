@@ -1179,3 +1179,167 @@
   .tela-recorte { width: 200px; height: 200px; }
   .editor-token-campos { width: 100%; }
 }
+
+/* ==========================================================
+   MARCAÇÕES — o que se desenha por cima do mundo
+   ========================================================== */
+
+.marcacao-forma {
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+  cursor: pointer;
+  transition: fill-opacity 140ms;
+}
+
+.marcacao-forma:hover { fill-opacity: .3 !important; }
+
+/* A do mestre é firme; a do jogador é uma anotação, e o traço
+   picotado deixa isso claro sem precisar de legenda. */
+.marcacao-forma.de-jogador { stroke-dasharray: 4 2.6; }
+
+.marcacao-forma.selecionada {
+  stroke-width: 2.6;
+  filter: drop-shadow(0 0 4px rgba(0, 0, 0, .35));
+}
+
+.marcacao-alfinete {
+  stroke: var(--fundo-painel);
+  stroke-width: 2;
+  cursor: pointer;
+}
+
+.marcacao-alfinete.selecionada {
+  stroke: var(--tinta);
+  filter: drop-shadow(0 0 4px rgba(0, 0, 0, .4));
+}
+
+.marcacao-previa {
+  stroke-width: 1.6;
+  stroke-dasharray: 5 3;
+  pointer-events: none;
+}
+
+.rotulo-marcacao {
+  font-family: var(--fonte-titulo);
+  font-weight: 700;
+  text-anchor: middle;
+  paint-order: stroke;
+  stroke: var(--fundo-painel);
+  stroke-width: 2.6;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+.selo-marcacao {
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  border: 3px solid var(--borda-forte);
+}
+
+/* Sem herói escolhido não há com que assinar: o grupo fica apagado. */
+.grupo-ferramentas.adormecido { opacity: .45; }
+
+/* ==========================================================
+   RASTRO DO GRUPO
+   ========================================================== */
+
+.linha-rastro {
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: .75;
+  pointer-events: none;
+}
+
+.passo-rastro { opacity: .85; }
+.passo-rastro.atual { opacity: 1; }
+
+/* ==========================================================
+   ESTANDARTE DO GRUPO
+   ========================================================== */
+
+.estandarte {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 0 10px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--borda);
+}
+
+.brasao-grupo { width: 34px; height: 35px; flex-shrink: 0; }
+
+.estandarte-texto { min-width: 0; flex: 1; }
+
+.estandarte-nome {
+  font-family: var(--fonte-titulo);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--tinta);
+  line-height: 1.2;
+}
+
+.estandarte-brasao {
+  font-size: 11px;
+  color: var(--tinta-fraca);
+  font-style: italic;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.estandarte-editar { margin-left: auto; flex-shrink: 0; }
+
+.editor-brasao { display: flex; gap: 16px; align-items: flex-start; }
+.editor-brasao-campos { flex: 1; min-width: 0; }
+
+.brasao-previa {
+  width: 130px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+}
+
+.brasao-previa .brasao { width: 120px; height: 125px; }
+
+/* ==========================================================
+   BOLETIM DA GUERRA
+   ========================================================== */
+
+.boletim-lista {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 46vh;
+  overflow-y: auto;
+}
+
+.boletim-linha {
+  padding: 9px 12px 9px 14px;
+  border-left: 3px solid var(--borda-forte);
+  background: var(--fundo-painel-2);
+  border-radius: 0 var(--raio-p) var(--raio-p) 0;
+  margin-bottom: 6px;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.boletim-linha.tom-conquista,
+.boletim-linha.tom-conquistado { border-left-color: var(--t20-rubro); }
+.boletim-linha.tom-sitiado { border-left-color: var(--t20-ouro); }
+.boletim-linha.tom-mobilizado { border-left-color: var(--t20-sepia); }
+.boletim-linha.tom-leal { border-left-color: var(--t20-azul); }
+.boletim-linha.tom-revolta { border-left-color: var(--t20-rubro-claro); }
+.boletim-linha.tom-arrasado { border-left-color: var(--t20-tinta); }
+.boletim-linha.tom-libertacao,
+.boletim-linha.tom-neutro { border-left-color: var(--t20-verde); }
+.boletim-linha.tom-cresceu { border-left-color: var(--t20-azul); }
+.boletim-linha.tom-encolheu { border-left-color: var(--t20-petroleo); }
+.boletim-linha.tom-revelado,
+.boletim-linha.tom-novo { border-left-color: var(--ouro); }
+
+@media (max-width: 820px) {
+  .editor-brasao { flex-direction: column; align-items: center; }
+  .brasao-previa { width: 100%; }
+}
