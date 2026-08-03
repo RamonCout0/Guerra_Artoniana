@@ -1,0 +1,29 @@
+name: Testes
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  fumaca:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - run: npm install
+
+      # o front-end não tem build: um erro de sintaxe só apareceria no
+      # navegador de alguém da mesa, no meio da sessão
+      - name: Conferir a sintaxe de todo o JavaScript
+        run: |
+          for arquivo in servidor.js banco.js publico/js/*.js testes/*.js; do
+            node --check "$arquivo"
+          done
+
+      - name: Testes de fumaça
+        run: npm test

@@ -1219,12 +1219,20 @@ var MapaArton = (function () {
     previa.style.borderColor = t ? t.cor : 'var(--realce)';
     var mira = $('#token-mira');
     if (mira && t) mira.style.borderColor = t.cor;
+    /* Sempre backgroundColor, nunca o atalho background: o atalho zera as
+       sub-propriedades, e o "cover"/"center" que a folha de estilo dá ao
+       .retrato-previa virava inline "auto"/"0% 0%". Como esta prévia é um
+       elemento fixo do index.html — não é recriada a cada render, como os
+       retratos da tira e da barra —, o estilo velho sobrevivia: quem abria
+       um herói sem foto e escolhia uma via o retrato em tamanho natural,
+       ladrilhado dentro do círculo. */
     if (foto) {
       previa.style.backgroundImage = 'url("' + foto + '")';
+      previa.style.backgroundColor = 'transparent';
       previa.textContent = '';
     } else {
       previa.style.backgroundImage = 'none';
-      previa.style.background = t ? t.cor : 'var(--realce)';
+      previa.style.backgroundColor = t ? t.cor : 'var(--realce)';
       var nome = $('#token-nome');
       previa.textContent = ((nome && nome.value) || '').trim().charAt(0).toUpperCase() || '?';
     }
@@ -2403,7 +2411,10 @@ var MapaArton = (function () {
         if (!confirm('Restaurar este backup?\n\nO mapa e o calendário atuais serão substituídos para todo mundo.')) return;
         adotar(pacote.mapa);
         Sincronia.salvarMapa(dados);
-        if (pacote.calendario) Sincronia.salvarCalendario(pacote.calendario);
+        // aqui o diário do backup entra no lugar do atual, de propósito
+        if (pacote.calendario) {
+          Sincronia.salvarCalendario(pacote.calendario, { substituirNotas: true });
+        }
         Sincronia.gravarAgora().then(function () {
           renderFiltros(); desenhar(); renderLista(); renderTira(); renderInspetor();
           Interface.avisar('Backup restaurado.');

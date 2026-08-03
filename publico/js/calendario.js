@@ -36,6 +36,10 @@ var CalendarioJanela = (function () {
   var diaSelecionado = null;
   var janela = null, aberto = false, pronto = false;
 
+  /* Fora do render: se ficasse dentro, cada redesenho começaria um
+     temporizador novo e o antigo gravaria um texto já velho por cima. */
+  var atrasoDoDiario = null;
+
   function ehMestre() { return Sincronia.ehMestre(); }
 
   function salvar() {
@@ -314,7 +318,18 @@ var CalendarioJanela = (function () {
     var semana = C.diaDaSemana(data);
     var eventos = C.eventosDoDia(data);
     var chave = chaveNota(data);
-    var nota = estado.notas[chave] || '';
+
+    /* O painel é redesenhado inteiro sempre que o mundo muda — inclusive
+       enquanto alguém digita no diário. Guarda o que está no campo, com
+       o cursor, para devolver depois de reconstruir. */
+    var campoAntigo = $('#campo-nota', caixa);
+    var digitando = campoAntigo && document.activeElement === campoAntigo
+      ? {
+          texto: campoAntigo.value,
+          inicio: campoAntigo.selectionStart,
+          fim: campoAntigo.selectionEnd
+        }
+      : null;
 
     var html = '' +
       '<h3>' + esc(C.formatarColoquial(data)) + '</h3>' +
@@ -408,10 +423,15 @@ var CalendarioJanela = (function () {
 
     var campo = $('#campo-nota', caixa);
     if (campo) {
-      var atraso = null;
+      if (digitando) {
+        campo.value = digitando.texto;
+        campo.focus();
+        try { campo.setSelectionRange(digitando.inicio, digitando.fim); } catch (e) { /* ok */ }
+      }
       campo.addEventListener('input', function () {
-        if (atraso) clearTimeout(atraso);
-        atraso = setTimeout(function () {
+        if (atrasoDoDiario) clearTimeout(atrasoDoDiario);
+        atrasoDoDiario = setTimeout(function () {
+          atrasoDoDiario = null;
           var texto = campo.value.trim();
           if (!estado.notas[chave]) estado.notas[chave] = {};
           if (texto) estado.notas[chave][eu] = texto;

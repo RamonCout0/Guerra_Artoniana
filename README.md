@@ -49,6 +49,19 @@ Sem `DATABASE_URL` definida, o servidor grava o mundo num arquivo local
 (`dados/estado.json`) — ótimo para testar na sua máquina, sem precisar de um Postgres
 rodando. Veja a seção seguinte para publicar com Postgres de verdade.
 
+### Testes
+
+```bash
+npm test
+```
+
+Sobe o servidor de verdade numa pasta temporária e confere o que não pode quebrar em
+silêncio: as três portas de entrada, a URL malformada que já derrubou o processo, a
+compressão, o diário sobrevivendo às gravações do mestre, a trava otimista e o logout
+revogando a sessão. Sem framework e sem dependência de desenvolvimento — é o mesmo Node
+que roda o servidor. O GitHub Actions roda isso e mais uma conferida de sintaxe em todo o
+JavaScript a cada push, já que o front-end não tem build para pegar um erro de digitação.
+
 ---
 
 ## Publicando no Railway
@@ -57,9 +70,10 @@ rodando. Veja a seção seguinte para publicar com Postgres de verdade.
    para ele. O `railway.json` já manda rodar `node servidor.js`; o `PORT` o Railway define
    sozinho.
 
-2. **Defina `SENHA_MESTRE` e `SENHA_JOGADOR`.** Sem a primeira, o servidor sobe com a senha
-   `mestre` e qualquer pessoa com o link viraria mestre. Sem a segunda, o link é público e
-   estranhos veem o mundo inteiro. O servidor avisa no log nos dois casos.
+2. **Defina `SENHA_MESTRE` e `SENHA_JOGADOR`.** Sem a primeira o servidor **se recusa a
+   subir** em produção, em vez de aceitar a senha de exemplo e deixar qualquer pessoa com o
+   link virar mestre. Sem a segunda ele sobe, mas o link é público e estranhos veem o mundo
+   inteiro — o log avisa.
 
 3. **Adicione um banco Postgres ao projeto.** O disco do contêiner é efêmero: sem um banco,
    todo redeploy apaga o mundo que você construiu — é para isso que serve o Postgres aqui.
@@ -77,7 +91,7 @@ rodando. Veja a seção seguinte para publicar com Postgres de verdade.
 
 | Variável | Para que serve | Padrão |
 | --- | --- | --- |
-| `SENHA_MESTRE` | Senha que libera a edição | `mestre` ⚠️ |
+| `SENHA_MESTRE` | Senha que libera a edição | `mestre` na sua máquina; **obrigatória** em produção |
 | `SENHA_JOGADOR` | Senha da mesa: sem ela ninguém entra | vazia = link público ⚠️ |
 | `DATABASE_URL` | Conexão do Postgres onde o mundo é gravado | sem ela, cai para um arquivo local ⚠️ |
 | `DADOS_DIR` | Onde gravar `estado.json` quando não há `DATABASE_URL` | `./dados` |
@@ -88,10 +102,38 @@ Sem `DATABASE_URL` no Railway, o servidor sobe do mesmo jeito, mas grava no disc
 do contêiner — e some no próximo redeploy. É por isso que vale a pena configurar o
 Postgres antes de convidar a mesa.
 
+Em produção o servidor prefere não subir a subir aberto: sem `SENHA_MESTRE` ele sai com
+erro dizendo o que falta. Ele reconhece produção por `NODE_ENV=production` ou pelas
+variáveis que o próprio Railway injeta.
+
 O servidor tem uma porta extra, `POST /api/diario`, que é a única gravação liberada a quem
 não é mestre — e só aceita a entrada de um herói que exista no grupo, num dia válido.
 
 Trocar `SENHA_MESTRE` ou `SEGREDO` derruba as sessões abertas — é só entrar de novo.
+Clicar em **Sair** também: o token do mestre carrega a época em que nasceu, e sair faz a
+época avançar, de modo que todo cookie de mestre já emitido para de valer em qualquer
+aparelho — não adianta ter guardado uma cópia dele.
+
+### Duas gravações que não se atropelam
+
+O mestre grava o mundo por `PUT /api/estado`; os jogadores gravam só o próprio diário, por
+`POST /api/diario`. As duas coisas convivem sem se apagar:
+
+- **O diário fica com o servidor.** O calendário que o mestre envia entra sem as notas, que
+  são preservadas como estão no banco. Antes, como o mestre trabalha com uma cópia de até
+  seis segundos atrás, mover o tempo apagava o que um jogador tivesse acabado de escrever.
+  Só a restauração de backup pede explicitamente para trocar o diário inteiro.
+- **Trava otimista no resto.** Cada gravação do mestre diz de qual revisão partiu; se o
+  mundo andou desde então — outra aba, outro aparelho — o servidor responde `409` e o
+  cliente recarrega e avisa, em vez de passar por cima. Escrever no diário não move a
+  revisão, então uma anotação de jogador nunca vira um conflito falso.
+
+### Desempenho
+
+HTML, CSS e JavaScript saem comprimidos com gzip para quem aceita (praticamente todo mundo).
+Na prática o desenho da geografia cai de 112 kB para 42, o `mapa.js` de 102 para 26 e o
+`mapa.css` de 29 para 6 — no celular, é a diferença entre abrir na hora e esperar. As
+imagens saem como estão, já que PNG e WebP não ganham nada com isso.
 
 ### Quem entra
 
@@ -353,6 +395,7 @@ legenda lá dentro se quiser afinar o resultado.
 servidor.js               servidor HTTP, API e sessão do mestre (Node puro)
 banco.js                  persistência em Postgres (usada quando há DATABASE_URL)
 railway.json              configuração de deploy
+testes/fumaca.js          testes de fumaça, sem framework (`npm test`)
 dados/estado.json         o mundo salvo em arquivo local, sem DATABASE_URL (não vai para o git)
 ferramentas/
   vetorizar.py            gera o traçado vetorial a partir da prancha

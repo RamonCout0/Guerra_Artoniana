@@ -24,6 +24,7 @@
 var http = require('http');
 var fs = require('fs');
 var path = require('path');
+var zlib = require('zlib');
 var crypto = require('crypto');
 var Banco = require('./banco.js');
 
@@ -40,12 +41,46 @@ var DURACAO_SESSAO_MS = 30 * 24 * 60 * 60 * 1000;  // 30 dias
 var DATABASE_URL = process.env.DATABASE_URL || '';
 var USANDO_POSTGRES = DATABASE_URL.length > 0;
 
+/* Publicado é diferente de rodando na sua máquina: o link do Railway é
+   público, e a senha de exemplo abriria o mundo para quem chutasse
+   primeiro. Aqui o servidor prefere não subir a subir aberto. */
+var EM_PRODUCAO = process.env.NODE_ENV === 'production' ||
+                  !!process.env.RAILWAY_ENVIRONMENT ||
+                  !!process.env.RAILWAY_ENVIRONMENT_NAME ||
+                  !!process.env.RAILWAY_PROJECT_ID;
+
+if (EM_PRODUCAO && !process.env.SENHA_MESTRE) {
+  console.error('');
+  console.error('  ⛔  SENHA_MESTRE não está definida.');
+  console.error('');
+  console.error('      Sem ela o servidor usaria a senha de exemplo ("mestre") e');
+  console.error('      qualquer pessoa com o link poderia editar o mundo inteiro.');
+  console.error('      Defina SENHA_MESTRE nas variáveis do projeto e publique de novo.');
+  console.error('');
+  process.exit(1);
+}
+
 /* ------------------------------------------------------------------
    Estado — em Postgres (DATABASE_URL definida) ou em disco (fallback
    para rodar local sem banco nenhum).
+
+   Duas contagens, de propósito:
+     versao        sobe quando o mestre grava o mundo. É ela que a trava
+                   otimista compara, então o diário não pode mexer nela —
+                   senão cada anotação de jogador viraria um conflito falso.
+     atualizadoEm  sobe a cada alteração de qualquer tipo. É o carimbo que
+                   os clientes ficam consultando para saber se vale baixar.
+
+   epocaMestre sobe quando o mestre sai, derrubando os cookies já emitidos.
    ------------------------------------------------------------------ */
 
-var estado = { versao: 1, atualizadoEm: 0, mapa: null, calendario: null };
+var estado = {
+  versao: 1,
+  atualizadoEm: 0,
+  mapa: null,
+  calendario: null,
+  epocaMestre: 1
+};
 
 function garantirPasta() {
   try {
@@ -72,7 +107,8 @@ function iniciarEstado() {
       versao: lido.versao || 1,
       atualizadoEm: lido.atualizadoEm || Date.now(),
       mapa: lido.mapa || null,
-      calendario: lido.calendario || null
+      calendario: lido.calendario || null,
+      epocaMestre: lido.epocaMestre || 1
     };
     console.log('Estado carregado de ' + ARQUIVO_ESTADO);
   } catch (e) {
@@ -110,6 +146,36 @@ function salvarEstado() {
   }, 250);
 }
 
+/* O mestre gravou o mundo: a revisão anda, e quem estava editando a
+   partir da revisão anterior vai levar um 409 em vez de sobrescrever. */
+function registrarMudancaDoMestre() {
+  estado.versao = (estado.versao || 1) + 1;
+  estado.atualizadoEm = Date.now();
+  salvarEstado();
+}
+
+/* O diário é de outra natureza: mexe só nas notas, que o mestre nunca
+   grava por /api/estado. Move o carimbo, não a revisão. */
+function registrarMudancaDoDiario() {
+  estado.atualizadoEm = Date.now();
+  salvarEstado();
+}
+
+/* O calendário que o mestre manda vem sem as notas — ele está sempre com
+   uma cópia de até seis segundos atrás, e devolvê-la apagaria o que os
+   jogadores acabaram de escrever. As notas do servidor mandam. Só a
+   restauração de um backup pede explicitamente para trocá-las. */
+function mesclarCalendario(atual, novo, substituirNotas) {
+  if (!novo || typeof novo !== 'object') return novo;
+  var saida = {};
+  Object.keys(novo).forEach(function (chave) { saida[chave] = novo[chave]; });
+  if (!substituirNotas) {
+    var guardadas = atual && atual.notas;
+    saida.notas = guardadas || novo.notas || {};
+  }
+  return saida;
+}
+
 /* ------------------------------------------------------------------
    Sessão do mestre (cookie assinado)
    ------------------------------------------------------------------ */
@@ -118,23 +184,37 @@ function assinar(valor) {
   return crypto.createHmac('sha256', SEGREDO).update(valor).digest('hex').slice(0, 32);
 }
 
+/* A época que vale para cada nível. Só a do mestre anda — os jogadores
+   dividem uma senha só, então revogar um revogaria a mesa inteira sem
+   ganhar nada em troca. */
+function epocaDoNivel(nivel) {
+  return nivel === 'mestre' ? (estado.epocaMestre || 1) : 1;
+}
+
 function criarToken(nivel) {
   var expira = Date.now() + DURACAO_SESSAO_MS;
-  var corpo = nivel + '.' + expira;
+  var corpo = nivel + '.' + epocaDoNivel(nivel) + '.' + expira;
   return corpo + '.' + assinar(corpo);
 }
 
-/* Devolve 'mestre', 'jogador' ou null. Cookies antigos diziam só
-   'mestre' e continuam valendo. */
+/* Devolve 'mestre', 'jogador' ou null.
+
+   O token carrega a época em que nasceu. Quando o mestre sai, a época
+   avança e todo cookie de mestre já emitido morre junto — antes o "Sair"
+   só pedia ao navegador que esquecesse o cookie, e uma cópia dele valia
+   por trinta dias. Cookies do formato antigo (sem época) não passam:
+   quem tinha sessão aberta entra uma vez de novo. */
 function nivelDoToken(token) {
   if (!token) return null;
   var partes = token.split('.');
-  if (partes.length !== 3) return null;
-  if (partes[0] !== 'mestre' && partes[0] !== 'jogador') return null;
-  var corpo = partes[0] + '.' + partes[1];
-  if (!comparacaoSegura(assinar(corpo), partes[2])) return null;
-  if (parseInt(partes[1], 10) <= Date.now()) return null;
-  return partes[0];
+  if (partes.length !== 4) return null;
+  var nivel = partes[0];
+  if (nivel !== 'mestre' && nivel !== 'jogador') return null;
+  var corpo = nivel + '.' + partes[1] + '.' + partes[2];
+  if (!comparacaoSegura(assinar(corpo), partes[3])) return null;
+  if (parseInt(partes[2], 10) <= Date.now()) return null;
+  if (parseInt(partes[1], 10) !== epocaDoNivel(nivel)) return null;
+  return nivel;
 }
 
 /* Compara pelo resumo: dá sempre o mesmo tamanho, então nem o tempo
@@ -226,10 +306,20 @@ function podeTentar(ip) {
   return registro.contagem < LIMITE_POR_IP;
 }
 
+/* Tira só as janelas já vencidas. Zerar a tabela inteira ao encher,
+   como era antes, perdoava justamente quem estava no meio do ataque. */
+function limparVencidos(tabela, janelaMs) {
+  var agora = Date.now();
+  Object.keys(tabela).forEach(function (chave) {
+    if (agora - tabela[chave].desde > janelaMs) delete tabela[chave];
+  });
+}
+
 function registrarFalha(ip) {
   if (tentativas[ip]) tentativas[ip].contagem++;
   geral.contagem++;
-  // não deixa a tabela crescer sem fim
+  // não deixa a tabela crescer sem fim; o teto global segura o resto
+  if (Object.keys(tentativas).length > 5000) limparVencidos(tentativas, JANELA_MS);
   if (Object.keys(tentativas).length > 5000) tentativas = {};
 }
 
@@ -243,6 +333,7 @@ function podeEscreverDiario(ip) {
 }
 function registrarEscrita(ip) {
   if (escritas[ip]) escritas[ip].contagem++;
+  if (Object.keys(escritas).length > 5000) limparVencidos(escritas, 60 * 1000);
   if (Object.keys(escritas).length > 5000) escritas = {};
 }
 
@@ -250,24 +341,62 @@ function registrarEscrita(ip) {
    Utilidades HTTP
    ------------------------------------------------------------------ */
 
+function aceitaGzip(req) {
+  return /(^|,)\s*gzip\s*(;|,|$)/i.test(
+    String((req && req.headers && req.headers['accept-encoding']) || '')
+  );
+}
+
 function responderJson(res, codigo, objeto, cabecalhos) {
-  var corpo = JSON.stringify(objeto);
+  var corpo = Buffer.from(JSON.stringify(objeto), 'utf8');
   var h = {
     'Content-Type': 'application/json; charset=utf-8',
-    'Content-Length': Buffer.byteLength(corpo),
-    'Cache-Control': 'no-store'
+    'Cache-Control': 'no-store',
+    'Vary': 'Accept-Encoding'
   };
   if (cabecalhos) Object.keys(cabecalhos).forEach(function (k) { h[k] = cabecalhos[k]; });
-  res.writeHead(codigo, h);
-  res.end(corpo);
+
+  function enviarCru() {
+    h['Content-Length'] = corpo.length;
+    res.writeHead(codigo, h);
+    res.end(corpo);
+  }
+
+  // O estado inteiro passa fácil de cem quilobytes e é baixado toda vez
+  // que o mestre mexe em algo. Resposta curta não paga a compressão.
+  if (corpo.length <= 1024 || !aceitaGzip(res.req)) return enviarCru();
+
+  zlib.gzip(corpo, function (erro, comprimido) {
+    if (erro || res.writableEnded) return erro ? enviarCru() : undefined;
+    h['Content-Encoding'] = 'gzip';
+    h['Content-Length'] = comprimido.length;
+    res.writeHead(codigo, h);
+    res.end(comprimido);
+  });
 }
+
+var LIMITE_CORPO = 12 * 1024 * 1024;   // 12 MB
 
 function lerCorpo(req, aoTerminar) {
   var pedacos = [];
   var tamanho = 0;
+  var encerrado = false;
+
+  function terminar(erro, valor) {
+    if (encerrado) return;
+    encerrado = true;
+    aoTerminar(erro, valor);
+  }
+
   req.on('data', function (p) {
+    if (encerrado) return;
     tamanho += p.length;
-    if (tamanho > 12 * 1024 * 1024) {   // 12 MB
+    if (tamanho > LIMITE_CORPO) {
+      // antes o pedido era destruído em silêncio e o cliente ficava
+      // esperando uma resposta que nunca vinha
+      var estouro = new Error('Corpo grande demais.');
+      estouro.grandeDemais = true;
+      terminar(estouro);
       req.destroy();
       return;
     }
@@ -276,12 +405,20 @@ function lerCorpo(req, aoTerminar) {
   req.on('end', function () {
     try {
       var texto = Buffer.concat(pedacos).toString('utf8');
-      aoTerminar(null, texto ? JSON.parse(texto) : {});
+      terminar(null, texto ? JSON.parse(texto) : {});
     } catch (e) {
-      aoTerminar(e);
+      terminar(e);
     }
   });
-  req.on('error', function (e) { aoTerminar(e); });
+  req.on('error', function (e) { terminar(e); });
+}
+
+/* Resposta de erro comum a quem manda um corpo inválido. */
+function recusarCorpo(res, erro, mensagem) {
+  if (erro && erro.grandeDemais) {
+    return responderJson(res, 413, { erro: 'Isso é grande demais para uma gravação só.' });
+  }
+  return responderJson(res, 400, { erro: mensagem });
 }
 
 var TIPOS = {
@@ -299,13 +436,34 @@ var TIPOS = {
   '.txt': 'text/plain; charset=utf-8'
 };
 
+/* Tipos que valem comprimir. Imagem já vem comprimida de fábrica. */
+var COMPRIMIVEIS = {
+  'text/html': true,
+  'text/css': true,
+  'application/javascript': true,
+  'application/json': true,
+  'image/svg+xml': true,
+  'text/plain': true
+};
+
 function servirEstatico(req, res, caminhoUrl) {
-  var relativo = decodeURIComponent(caminhoUrl);
+  var relativo;
+  try {
+    relativo = decodeURIComponent(caminhoUrl);
+  } catch (e) {
+    // Um "%" solto na URL faz o decodeURIComponent lançar. Sem esta
+    // guarda o erro subia até o handler do http e derrubava o processo:
+    // um GET /% tirava a mesa inteira do ar.
+    res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('Caminho inválido');
+    return;
+  }
   if (relativo === '/') relativo = '/index.html';
   var destino = path.join(RAIZ_PUBLICA, path.normalize(relativo));
 
-  // impede sair da pasta pública
-  if (destino.indexOf(RAIZ_PUBLICA) !== 0) {
+  // impede sair da pasta pública — comparando com a barra junto, para
+  // que uma pasta irmã de nome parecido não passe pelo prefixo
+  if (destino !== RAIZ_PUBLICA && destino.indexOf(RAIZ_PUBLICA + path.sep) !== 0) {
     res.writeHead(403); res.end('Proibido'); return;
   }
 
@@ -328,20 +486,48 @@ function servirEstatico(req, res, caminhoUrl) {
 
 function enviarArquivo(req, res, destino, info) {
   var extensao = path.extname(destino).toLowerCase();
-  var etag = '"' + info.size + '-' + Number(info.mtimeMs).toString(36) + '"';
-  if (req.headers['if-none-match'] === etag) {
-    res.writeHead(304); res.end(); return;
-  }
+  var tipo = TIPOS[extensao] || 'application/octet-stream';
   var ehImagem = extensao === '.png' || extensao === '.jpg' || extensao === '.jpeg' ||
                  extensao === '.webp';
-  res.writeHead(200, {
-    'Content-Type': TIPOS[extensao] || 'application/octet-stream',
-    'Content-Length': info.size,
+
+  /* São mais de trezentos quilobytes de JS e CSS por carga — só o desenho
+     da geografia passa de cem. Comprimido cai para menos de um terço, o
+     que no celular é a diferença entre abrir na hora e esperar. */
+  var comprimir = !ehImagem &&
+                  COMPRIMIVEIS[String(tipo).split(';')[0].trim()] === true &&
+                  info.size > 1024 &&
+                  aceitaGzip(req);
+
+  // a versão comprimida e a crua são corpos diferentes: etiquetas diferentes
+  var etag = '"' + info.size + '-' + Number(info.mtimeMs).toString(36) +
+             (comprimir ? '-gz' : '') + '"';
+
+  if (req.headers['if-none-match'] === etag) {
+    res.writeHead(304, { 'ETag': etag, 'Vary': 'Accept-Encoding' });
+    res.end();
+    return;
+  }
+
+  var cabecalhos = {
+    'Content-Type': tipo,
     'ETag': etag,
+    'Vary': 'Accept-Encoding',
     'Cache-Control': ehImagem ? 'public, max-age=604800' : 'no-cache'
-  });
+  };
+  if (comprimir) cabecalhos['Content-Encoding'] = 'gzip';
+  else cabecalhos['Content-Length'] = info.size;
+
+  res.writeHead(200, cabecalhos);
   if (req.method === 'HEAD') { res.end(); return; }
-  fs.createReadStream(destino).pipe(res);
+
+  var leitura = fs.createReadStream(destino);
+  leitura.on('error', function () { res.destroy(); });
+
+  if (!comprimir) { leitura.pipe(res); return; }
+
+  var compressor = zlib.createGzip();
+  compressor.on('error', function () { res.destroy(); });
+  leitura.pipe(compressor).pipe(res);
 }
 
 /* ------------------------------------------------------------------
@@ -372,7 +558,7 @@ function tratarApi(req, res, rota, consulta) {
       return responderJson(res, 429, { erro: 'Muitas tentativas. Espere alguns minutos.' });
     }
     return lerCorpo(req, function (erro, corpo) {
-      if (erro) return responderJson(res, 400, { erro: 'Requisição inválida.' });
+      if (erro) return recusarCorpo(res, erro, 'Requisição inválida.');
       var senha = String((corpo && corpo.senha) || '');
       var nivelNovo = nivelDaSenha(senha);
       if (!nivelNovo) {
@@ -389,6 +575,13 @@ function tratarApi(req, res, rota, consulta) {
   }
 
   if (rota === '/api/logout' && req.method === 'POST') {
+    /* Sair de verdade: a época avança e todo cookie de mestre já emitido
+       para de valer, não só o deste navegador. Como o mestre é um só,
+       não há sessão de terceiro para derrubar junto. */
+    if (mestre) {
+      estado.epocaMestre = (estado.epocaMestre || 1) + 1;
+      salvarEstado();
+    }
     return responderJson(res, 200, { mestre: false }, {
       'Set-Cookie': 'artoniana_mestre=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0'
     });
@@ -408,7 +601,11 @@ function tratarApi(req, res, rota, consulta) {
     if (!entrou) return semSenha();
     var desde = parseInt(consulta.desde, 10);
     if (desde && desde >= estado.atualizadoEm) {
-      return responderJson(res, 200, { semMudanca: true, atualizadoEm: estado.atualizadoEm });
+      return responderJson(res, 200, {
+        semMudanca: true,
+        versao: estado.versao,
+        atualizadoEm: estado.atualizadoEm
+      });
     }
     return responderJson(res, 200, {
       versao: estado.versao,
@@ -426,12 +623,31 @@ function tratarApi(req, res, rota, consulta) {
       });
     }
     return lerCorpo(req, function (erro, corpo) {
-      if (erro) return responderJson(res, 400, { erro: 'JSON inválido: ' + erro.message });
+      if (erro) return recusarCorpo(res, erro, 'JSON inválido: ' + erro.message);
+
+      /* Trava otimista. O mestre diz de qual revisão partiu; se o mundo
+         andou desde então — outra aba, outro aparelho — recusa em vez de
+         passar por cima do que o outro escreveu. */
+      var base = parseInt(corpo.baseVersao, 10);
+      if (base && base !== estado.versao) {
+        return responderJson(res, 409, {
+          erro: 'O mundo mudou em outro lugar enquanto você editava.',
+          conflito: true,
+          versao: estado.versao,
+          atualizadoEm: estado.atualizadoEm
+        });
+      }
+
       if (corpo.mapa !== undefined) estado.mapa = corpo.mapa;
-      if (corpo.calendario !== undefined) estado.calendario = corpo.calendario;
-      estado.atualizadoEm = Date.now();
-      salvarEstado();
-      responderJson(res, 200, { ok: true, atualizadoEm: estado.atualizadoEm });
+      if (corpo.calendario !== undefined) {
+        estado.calendario = mesclarCalendario(
+          estado.calendario, corpo.calendario, corpo.substituirNotas === true
+        );
+      }
+      registrarMudancaDoMestre();
+      responderJson(res, 200, {
+        ok: true, versao: estado.versao, atualizadoEm: estado.atualizadoEm
+      });
     });
   }
 
@@ -447,7 +663,7 @@ function tratarApi(req, res, rota, consulta) {
       return responderJson(res, 429, { erro: 'Calma. Espere um pouco antes de escrever de novo.' });
     }
     return lerCorpo(req, function (erro, corpo) {
-      if (erro) return responderJson(res, 400, { erro: 'Requisição inválida.' });
+      if (erro) return recusarCorpo(res, erro, 'Requisição inválida.');
 
       var chave = String((corpo && corpo.chave) || '');
       var autor = String((corpo && corpo.autor) || '');
@@ -484,8 +700,7 @@ function tratarApi(req, res, rota, consulta) {
       if (Object.keys(doDia).length) estado.calendario.notas[chave] = doDia;
       else delete estado.calendario.notas[chave];
 
-      estado.atualizadoEm = Date.now();
-      salvarEstado();
+      registrarMudancaDoDiario();
       registrarEscrita(ipDiario);
       responderJson(res, 200, { ok: true, atualizadoEm: estado.atualizadoEm });
     });
@@ -494,12 +709,14 @@ function tratarApi(req, res, rota, consulta) {
   if (rota === '/api/reiniciar' && req.method === 'POST') {
     if (!mestre) return responderJson(res, 403, { erro: 'Só o mestre pode reiniciar.' });
     return lerCorpo(req, function (erro, corpo) {
+      if (erro) return recusarCorpo(res, erro, 'Requisição inválida.');
       var alvo = (corpo && corpo.alvo) || 'tudo';
       if (alvo === 'mapa' || alvo === 'tudo') estado.mapa = null;
       if (alvo === 'calendario' || alvo === 'tudo') estado.calendario = null;
-      estado.atualizadoEm = Date.now();
-      salvarEstado();
-      responderJson(res, 200, { ok: true, atualizadoEm: estado.atualizadoEm });
+      registrarMudancaDoMestre();
+      responderJson(res, 200, {
+        ok: true, versao: estado.versao, atualizadoEm: estado.atualizadoEm
+      });
     });
   }
 
@@ -560,6 +777,17 @@ iniciarEstado().then(function () {
 }).catch(function (e) {
   console.error('Não consegui carregar o estado inicial:', e.message);
   process.exit(1);
+});
+
+/* Rede de segurança. Um erro solto num handler não pode tirar a mesa do
+   ar no meio da sessão — loga e segue de pé. É a última linha: o certo
+   continua sendo tratar o erro onde ele nasce. */
+process.on('uncaughtException', function (e) {
+  console.error('Erro não tratado (o servidor continua de pé):', (e && e.stack) || e);
+});
+
+process.on('unhandledRejection', function (e) {
+  console.error('Promise rejeitada sem tratamento:', (e && e.stack) || e);
 });
 
 process.on('SIGTERM', function () {

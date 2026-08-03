@@ -22,13 +22,14 @@ var Sincronia = (function () {
     mestre: false,
     nivel: null,            // 'mestre' | 'jogador' | null (sem senha ainda)
     portaoFechado: false,   // a mesa exige senha para entrar?
+    versao: 0,              // revisão do mundo, para a trava otimista
     atualizadoEm: 0,
     mapa: null,
     calendario: null
   };
 
   var ouvintes = { mapa: [], calendario: [], sessao: [], conexao: [] };
-  var pendente = { mapa: null, calendario: null };
+  var pendente = { mapa: null, calendario: null, substituirNotas: false };
   var temporizadorGravacao = null;
   var temporizadorSondagem = null;
   var gravando = false;
@@ -61,6 +62,7 @@ var Sincronia = (function () {
         if (!r.ok) {
           var e = new Error(corpo.erro || ('Erro ' + r.status));
           e.status = r.status;
+          e.corpo = corpo;
           throw e;
         }
         return corpo;
@@ -82,8 +84,13 @@ var Sincronia = (function () {
   function gravarLocal() {
     if (pendente.mapa) Armazenamento.gravar('mapa', pendente.mapa);
     if (pendente.calendario) Armazenamento.gravar('calendario', pendente.calendario);
+    limparPendente();
+  }
+
+  function limparPendente() {
     pendente.mapa = null;
     pendente.calendario = null;
+    pendente.substituirNotas = false;
   }
 
   /* ---------------- ciclo de vida ---------------- */
@@ -117,6 +124,7 @@ var Sincronia = (function () {
         estado.online = true;
         estado.mestre = !!resposta.mestre;
         if (resposta.nivel) estado.nivel = resposta.nivel;
+        estado.versao = resposta.versao || 0;
         estado.atualizadoEm = resposta.atualizadoEm || 0;
         estado.mapa = resposta.mapa || null;
         estado.calendario = resposta.calendario || null;
@@ -142,6 +150,7 @@ var Sincronia = (function () {
             estado.mestre = !!resposta.mestre;
             emitir('sessao', { mestre: estado.mestre, online: true });
           }
+          if (resposta.versao) estado.versao = resposta.versao;
           if (!resposta.semMudanca) {
             estado.atualizadoEm = resposta.atualizadoEm || Date.now();
             if (resposta.mapa !== undefined) {
@@ -213,21 +222,21 @@ var Sincronia = (function () {
       return Promise.resolve();
     }
     if (!estado.mestre) {
-      pendente.mapa = null;
-      pendente.calendario = null;
+      limparPendente();
       return Promise.reject(new Error('Modo leitura: só o mestre pode gravar.'));
     }
 
-    var carga = {};
+    var carga = { baseVersao: estado.versao };
     if (pendente.mapa) carga.mapa = pendente.mapa;
     if (pendente.calendario) carga.calendario = pendente.calendario;
-    pendente.mapa = null;
-    pendente.calendario = null;
+    if (pendente.substituirNotas) carga.substituirNotas = true;
+    limparPendente();
     gravando = true;
 
     return pedir('/api/estado', { method: 'PUT', body: JSON.stringify(carga) })
       .then(function (resposta) {
         gravando = false;
+        estado.versao = resposta.versao || estado.versao;
         estado.atualizadoEm = resposta.atualizadoEm || Date.now();
         if (carga.mapa) estado.mapa = carga.mapa;
         if (carga.calendario) estado.calendario = carga.calendario;
@@ -238,6 +247,15 @@ var Sincronia = (function () {
         if (e.status === 403) {
           estado.mestre = false;
           emitir('sessao', { mestre: false, online: true });
+        }
+        /* Conflito: o mundo andou em outro lugar. Melhor recarregar e
+           avisar do que gravar por cima do que o outro escreveu. */
+        if (e.status === 409) {
+          emitir('conexao', {
+            online: true,
+            erro: 'O mundo mudou em outra aba ou aparelho. Recarreguei — refaça a última alteração.'
+          });
+          return carregarEstado().then(function () { throw e; });
         }
         emitir('conexao', { online: estado.online, erro: e.message });
         throw e;
@@ -250,8 +268,12 @@ var Sincronia = (function () {
     agendarGravacao();
   }
 
-  function salvarCalendario(dados) {
+  /* opcoes.substituirNotas troca o diário inteiro — só a restauração de
+     backup faz isso. No dia a dia as notas ficam com o servidor, que é
+     quem tem a versão de verdade (veja mesclarCalendario no servidor). */
+  function salvarCalendario(dados, opcoes) {
     pendente.calendario = dados;
+    if (opcoes && opcoes.substituirNotas) pendente.substituirNotas = true;
     if (!estado.online) { gravarLocal(); return; }
     agendarGravacao();
   }
@@ -301,9 +323,10 @@ var Sincronia = (function () {
   /* Garante que nada se perca ao fechar a aba */
   window.addEventListener('beforeunload', function () {
     if (temporizadorGravacao && estado.online && estado.mestre) {
-      var carga = {};
+      var carga = { baseVersao: estado.versao };
       if (pendente.mapa) carga.mapa = pendente.mapa;
       if (pendente.calendario) carga.calendario = pendente.calendario;
+      if (pendente.substituirNotas) carga.substituirNotas = true;
       try {
         navigator.sendBeacon('/api/estado',
           new Blob([JSON.stringify(carga)], { type: 'application/json' }));
